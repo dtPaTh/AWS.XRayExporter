@@ -1,0 +1,28 @@
+{
+  "Traces": [
+    {
+      "Id": "1-655b794c-5ccb81d262821fbc0b55cd31",
+      "Duration": 0.251,
+      "LimitExceeded": false,
+      "Segments": [
+        {
+          "Id": "6825ee1e9dc4b53f",
+          "Document": "{\"id\": \"6825ee1e9dc4b53f\",\"name\": \"isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\",\"start_time\": 1700493644.725,\"trace_id\": \"1-655b794c-5ccb81d262821fbc0b55cd31\",\"end_time\": 1700493644.95,\"parent_id\": \"7b294b2875c8d1b1\",\"http\": {\"response\": {\"status\": 200}},\"aws\": {\"request_id\": \"6ac34107-f0f2-444c-bc87-7ef3579b45c3\"},\"origin\": \"AWS::Lambda\",\"resource_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\"}"
+        },
+        {
+          "Id": "01839f2b15e4d4cb",
+          "Document": "{\"id\": \"01839f2b15e4d4cb\",\"name\": \"isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\",\"start_time\": 1700493644.7287824,\"trace_id\": \"1-655b794c-5ccb81d262821fbc0b55cd31\",\"end_time\": 1700493644.9671452,\"parent_id\": \"6825ee1e9dc4b53f\",\"aws\": {\"account_id\": \"512220559759\",\"function_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\",\"cloudwatch_logs\": [{\"log_group\": \"\/aws\/lambda\/isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\"}],\"resource_names\": [\"isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\"]},\"origin\": \"AWS::Lambda::Function\",\"subsegments\": [{\"id\": \"ddf0d581cefd87e2\",\"name\": \"Overhead\",\"start_time\": 1700493644.9486315,\"end_time\": 1700493644.967036,\"aws\": {\"function_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\"}},{\"id\": \"e9ed98f53d51cb1f\",\"name\": \"Invocation\",\"start_time\": 1700493644.7288804,\"end_time\": 1700493644.9485693,\"aws\": {\"function_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\"},\"subsegments\": [{\"id\": \"6028e8092eb32d71\",\"name\": \"SQS\",\"start_time\": 1700493644.732944,\"end_time\": 1700493644.941887,\"in_progress\": false,\"http\": {\"response\": {\"status\": 200}},\"aws\": {\"queue_url\": \"https:\/\/sqs.us-east-1.amazonaws.com\/512220559759\/isaac-xray-e2e-test-Queue-l2PTEMxYysIK\",\"message_id\": \"90fab1ee-c871-4c6f-ae89-48572dd7ad43\",\"region\": \"us-east-1\",\"operation\": \"SendMessage\",\"request_id\": \"a2c5424c-3ec8-5414-a0f3-1f9945443a9d\",\"resource_names\": [\"https:\/\/sqs.us-east-1.amazonaws.com\/512220559759\/isaac-xray-e2e-test-Queue-l2PTEMxYysIK\"]},\"namespace\": \"aws\"}]}]}"
+        },
+        {
+          "Id": "797142da7c9e37cc",
+          "Document": "{\"id\": \"797142da7c9e37cc\",\"name\": \"test-xray-e2e\/test\",\"start_time\": 1700493644.716,\"trace_id\": \"1-655b794c-5ccb81d262821fbc0b55cd31\",\"end_time\": 1700493644.951,\"http\": {\"request\": {\"url\": \"https:\/\/gbz1q92hik.execute-api.us-east-1.amazonaws.com\/test\/\",\"method\": \"POST\",\"user_agent\": \"curl\/8.1.2\",\"client_ip\": \"79.156.143.177\",\"x_forwarded_for\": true},\"response\": {\"status\": 200,\"content_length\": 0}},\"aws\": {\"api_gateway\": {\"account_id\": \"512220559759\",\"rest_api_id\": \"gbz1q92hik\",\"stage\": \"test\",\"request_id\": \"6c75d326-3400-4a31-babc-9769626a40a2\"}},\"annotations\": {\"aws:api_id\": \"gbz1q92hik\",\"aws:api_stage\": \"test\"},\"metadata\": {\"default\": {\"extended_request_id\": \"Os_kCFoDoAMEvfQ=\",\"request_id\": \"6c75d326-3400-4a31-babc-9769626a40a2\"}},\"origin\": \"AWS::ApiGateway::Stage\",\"resource_arn\": \"arn:aws:apigateway:us-east-1::\/restapis\/gbz1q92hik\/stages\/test\",\"subsegments\": [{\"id\": \"7b294b2875c8d1b1\",\"name\": \"Lambda\",\"start_time\": 1700493644.717,\"end_time\": 1700493644.951,\"http\": {\"request\": {\"url\": \"https:\/\/lambda.us-east-1.amazonaws.com\/2015-03-31\/functions\/arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\/invocations\",\"method\": \"POST\"},\"response\": {\"status\": 200,\"content_length\": 0}},\"aws\": {\"function_name\": \"isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\",\"region\": \"us-east-1\",\"operation\": \"Invoke\",\"resource_names\": [\"isaac-xray-e2e-test-PutMessageFunction-yZhZQHGKYf8c\"]},\"namespace\": \"aws\"}]}"
+        },
+        {
+          "Id": "0e0f0c252435ae9e",
+          "Document": "{\"id\": \"0e0f0c252435ae9e\",\"name\": \"SQS\",\"start_time\": 1700493644.732944,\"trace_id\": \"1-655b794c-5ccb81d262821fbc0b55cd31\",\"end_time\": 1700493644.941887,\"parent_id\": \"6028e8092eb32d71\",\"inferred\": true,\"http\": {\"response\": {\"status\": 200}},\"aws\": {\"queue_url\": \"https:\/\/sqs.us-east-1.amazonaws.com\/512220559759\/isaac-xray-e2e-test-Queue-l2PTEMxYysIK\",\"message_id\": \"90fab1ee-c871-4c6f-ae89-48572dd7ad43\",\"region\": \"us-east-1\",\"operation\": \"SendMessage\",\"request_id\": \"a2c5424c-3ec8-5414-a0f3-1f9945443a9d\",\"resource_names\": [\"https:\/\/sqs.us-east-1.amazonaws.com\/512220559759\/isaac-xray-e2e-test-Queue-l2PTEMxYysIK\"]},\"origin\": \"AWS::SQS::Queue\",\"links\": [{\"trace_id\": \"1-655b794c-4a9a1ce0471e9f2d7530adec\",\"id\": \"7b752a9f8d89fa08\",\"attributes\": {\"aws.xray.reserved.names\": [\"isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\"],\"aws.xray.reserved.received_event_end_time\": 1700493644.967,\"aws.xray.reserved.type\": \"AWS::Lambda\",\"aws.xray.reserved.reference_type\": \"child\"}}],\"subsegments\": [{\"id\": \"041f83bd164d511c\",\"name\": \"QueueTime\",\"start_time\": 1700493644.732944,\"end_time\": 1700493644.941887}]}"
+        }
+      ]
+    }
+  ],
+  "UnprocessedTraceIds": []
+}

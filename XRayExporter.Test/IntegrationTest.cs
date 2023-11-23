@@ -14,15 +14,31 @@ namespace XRayExporter.Test
         public void Setup()
         {
             Environment.SetEnvironmentVariable("OTLP_ENDPOINT", "http://localhost:4318/v1/traces");
+
+            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+        }
+
+
+        [Test]
+        public async Task SendComplexSampleToBackend()
+        {
+            //await SendToBackend("data/sqs-segment-parent.json", false);
+            await SendToBackend("data/sqs-segment-child.json", false);
         }
 
         [Test]
-        public async Task SendSampleToBackend()
+        public async Task SendSingleTraceToBackend()
         {
-            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-            string tracesJson = File.ReadAllText("data/batchgettraces.json");
+            await SendToBackend("data/batchgettraces.json");
+        }
 
-            var conv = new XRay2OTLP.Convert(null, true);
+            
+        public async Task SendToBackend(string segmentDocFilename, bool simulateTraceId = true)
+        {
+            
+            string tracesJson = File.ReadAllText(segmentDocFilename);
+
+            var conv = new XRay2OTLP.Convert(null, true, simulateTraceId);
             var exportTraceServiceRequest = conv.FromXRay(tracesJson);
 
             var client = new HttpClient();

@@ -1,0 +1,20 @@
+{
+  "Traces": [
+    {
+      "Id": "1-655b794c-4a9a1ce0471e9f2d7530adec",
+      "Duration": 0.012,
+      "LimitExceeded": false,
+      "Segments": [
+        {
+          "Id": "7b752a9f8d89fa08",
+          "Document": "{\"id\": \"7b752a9f8d89fa08\",\"name\": \"isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\",\"start_time\": 1700493644.977,\"trace_id\": \"1-655b794c-4a9a1ce0471e9f2d7530adec\",\"end_time\": 1700493644.985,\"http\": {\"response\": {\"status\": 200}},\"aws\": {\"request_id\": \"521241f4-9635-50eb-8905-1c21ed4ae1f7\"},\"origin\": \"AWS::Lambda\",\"resource_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\",\"links\": [{\"trace_id\": \"1-655b794c-5ccb81d262821fbc0b55cd31\",\"id\": \"6028e8092eb32d71\",\"attributes\": {\"aws.xray.reserved.reference_type\": \"parent\"}}]}"
+        },
+        {
+          "Id": "194c22d93763dd70",
+          "Document": "{\"id\": \"194c22d93763dd70\",\"name\": \"isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\",\"start_time\": 1700493644.9833896,\"trace_id\": \"1-655b794c-4a9a1ce0471e9f2d7530adec\",\"end_time\": 1700493644.989335,\"parent_id\": \"7b752a9f8d89fa08\",\"aws\": {\"account_id\": \"512220559759\",\"function_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\",\"cloudwatch_logs\": [{\"log_group\": \"\/aws\/lambda\/isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\"}],\"resource_names\": [\"isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\"]},\"origin\": \"AWS::Lambda::Function\",\"subsegments\": [{\"id\": \"01bcf92e4b6a58a4\",\"name\": \"Overhead\",\"start_time\": 1700493644.9844062,\"end_time\": 1700493644.9892254,\"aws\": {\"function_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\"}},{\"id\": \"6d98f9bd1c2a36ec\",\"name\": \"Invocation\",\"start_time\": 1700493644.9835057,\"end_time\": 1700493644.984331,\"aws\": {\"function_arn\": \"arn:aws:lambda:us-east-1:512220559759:function:isaac-xray-e2e-test-GetMessageFunction-dLWgwGnI9wS6\"}}]}"
+        }
+      ]
+    }
+  ],
+  "UnprocessedTraceIds": []
+}
