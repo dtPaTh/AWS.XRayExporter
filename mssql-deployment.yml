@@ -34,7 +34,7 @@ kind: Service
 metadata:
   name: mssqlinst
 spec:
-  type: LoadBalancer # ClusterIP may be more appropriate in production
+  type: ClusterIP # Using LoadBalancer isn't recommended. 
   selector:
     app: mssql
   ports:
