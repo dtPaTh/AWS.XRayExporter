@@ -1,28 +1,24 @@
+using Amazon.Runtime;
+using Amazon.SecurityToken;
+using Amazon.SecurityToken.Model;
+using Amazon.XRay;
+using Amazon.XRay.Model;
+using AmazonSDKWrapper;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.DurableTask;
+using Microsoft.DurableTask.Client;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
-using System.Reactive;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Amazon.Runtime;
-using Amazon.SecurityToken.Model;
-using Amazon.SecurityToken;
-using Amazon.XRay;
-using Amazon.XRay.Model;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Extensions.Logging;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Hosting.Internal;
-using DurableTask.Core;
-using AmazonSDKWrapper;
 
 namespace XRayConnector
 {
@@ -99,13 +95,17 @@ namespace XRayConnector
         }
 
         private readonly IHttpClientFactory _httpClientFactory;
+        
 
         private static SessionAWSCredentials _sessionCredentials;
         private static DateTime _credentialsExpiration;
 
-        public XRayConnector(IHttpClientFactory httpClientFactory)
+        ILogger log;
+
+        public XRayConnector(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
         {
             _httpClientFactory = httpClientFactory;
+            log = loggerFactory.CreateLogger<XRayConnector>();
 
             SimulatorMode = Enum.TryParse(SimulatorMode.GetType(), Environment.GetEnvironmentVariable(SimulatorModeCfg), true, out object result) ? (TestSimulator)result : TestSimulator.Off;
         }
@@ -223,7 +223,7 @@ namespace XRayConnector
 
             return _sessionCredentials;
         }
-        public async Task<TracesResult> GetTraces(GetTraceSummariesRequest req, ILogger log)
+        public async Task<TracesResult> GetTraces(GetTraceSummariesRequest req)
         {
             if (XRayClient != null)
             {
@@ -268,8 +268,8 @@ namespace XRayConnector
         }
 
 
-        [FunctionName(nameof(GetRecentTraceIds))]
-        public async Task<TracesResult> GetRecentTraceIds([ActivityTrigger] TracesRequest req, ILogger log)
+        [Function(nameof(GetRecentTraceIds))]
+        public async Task<TracesResult> GetRecentTraceIds([ActivityTrigger] TracesRequest req)
         {
             var reqObj = new GetTraceSummariesRequest
             {
@@ -279,11 +279,11 @@ namespace XRayConnector
             };
             log.LogInformation("GetTraceSummaries@" + req.StartTime + " - " + req.EndTime);
 
-            return await GetTraces(reqObj, log);
+            return await GetTraces(reqObj);
         }
       
 
-        async Task<TraceDetailsResult> GetTraceDetails(BatchGetTracesRequest req, ILogger log)
+        async Task<TraceDetailsResult> GetTraceDetails(BatchGetTracesRequest req)
         {
     
             try
@@ -331,8 +331,8 @@ namespace XRayConnector
         }
 
 
-        [FunctionName(nameof(GetTraceDetails))]
-        public Task<TraceDetailsResult> GetTraceDetails([ActivityTrigger] TraceDetailsRequest req, ILogger log)
+        [Function(nameof(GetTraceDetails))]
+        public Task<TraceDetailsResult> GetTraceDetails([ActivityTrigger] TraceDetailsRequest req)
         {
             var reqObj = new BatchGetTracesRequest()
             {
@@ -340,12 +340,12 @@ namespace XRayConnector
                 NextToken = req.NextToken
             };
 
-            return GetTraceDetails(reqObj, log);
+            return GetTraceDetails(reqObj);
         }
 
 
-        [FunctionName(nameof(ProcessTraces))]
-        public async Task<bool> ProcessTraces([ActivityTrigger] string tracesJson, ILogger log)
+        [Function(nameof(ProcessTraces))]
+        public async Task<bool> ProcessTraces([ActivityTrigger] string tracesJson)
         {
             try
             {
@@ -394,9 +394,8 @@ namespace XRayConnector
             return true;
         }
 
-        [FunctionName(nameof(RetrieveTraceDetails))]
-        public async Task RetrieveTraceDetails(
-        [OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
+        [Function(nameof(RetrieveTraceDetails))]
+        public async Task RetrieveTraceDetails([OrchestrationTrigger] TaskOrchestrationContext context)
         {
             var traces = context.GetInput<TracesResult>();
             if (traces != null)
@@ -430,9 +429,9 @@ namespace XRayConnector
             }
         }
 
-        [FunctionName(nameof(RetrieveRecentTraces))]
+        [Function(nameof(RetrieveRecentTraces))]
         public async Task RetrieveRecentTraces(
-            [OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
+            [OrchestrationTrigger] TaskOrchestrationContext context)
         {
 
             var currentTime = context.CurrentUtcDateTime; //https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-code-constraints?tabs=csharp#dates-and-times
@@ -468,57 +467,89 @@ namespace XRayConnector
             }
         }
 
-        [FunctionName(nameof(WorkflowWatchdog))]
-        public async Task<HttpResponseMessage> WorkflowWatchdog(
-            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestMessage req,
-            [DurableClient] IDurableOrchestrationClient client,
-            ILogger log)
+        [Function(nameof(WorkflowWatchdog))]
+        public async Task<HttpResponseData> WorkflowWatchdog(
+            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req,
+            [DurableClient] DurableTaskClient durableTaskClient)
         {
-            var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
+            var response = req.CreateResponse(HttpStatusCode.OK);
+
+            
             try
             {
                 string instanceId = PeriodicAPIPollerSingletoninstanceId;
 
-                DurableOrchestrationStatus status = await client.GetStatusAsync(PeriodicAPIPollerSingletoninstanceId);
+                var status = await durableTaskClient.GetInstanceAsync(PeriodicAPIPollerSingletoninstanceId);
 
                 if (status == null)
                 {
                     if (AutoStartWorkflow)
                     {
-                        res.Content = new StringContent("{status:\"Ok\" workflowstatus:\"Starting\"}", null, "application/json");
+                        await response.WriteAsJsonAsync(
+                            new
+                            {
+                                status = "Ok",
+                                workflowstatus = "Starting"
+                            }
+                        );
+
 
                         log.LogWarning($"PeriodicAPIPoller has not been started. Automatically starting.. ");
-                        await client.StartNewAsync(nameof(PeriodicAPIPoller), instanceId);
+                        await durableTaskClient.ScheduleNewOrchestrationInstanceAsync(nameof(PeriodicAPIPoller), null, new StartOrchestrationOptions() { InstanceId = instanceId });
                     }
                     else
-                        res.Content = new StringContent("{status:\"Ok\" workflowstatus:\"NotStarted\"}", null, "application/json");
+                    {
+                        await response.WriteAsJsonAsync(
+                            new
+                            {
+                                status = "Ok",
+                                workflowstatus = "NotStarted"
+                            }
+                        );
+
+                    }
+                    
 
                 }
                 else 
                 {
-                    res.Content = new StringContent("{status=\"Ok\" workflowstatus:\""+status.RuntimeStatus.ToString()+"\"}", null, "application/json");
+                    await response.WriteAsJsonAsync(
+                        new
+                        {
+                            status = "Ok",
+                            workflowstatus = status.RuntimeStatus.ToString()
+                        }
+                    );
+
                     log.LogWarning("PeriodicAPIPoller has been started prior! Status: '" + status.RuntimeStatus.ToString() + "'");
                     if (AutoStartWorkflow && (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed || status.RuntimeStatus == OrchestrationRuntimeStatus.Terminated))
                     {
                         log.LogWarning("Restarting PeriodicAPIPoller!");
-                        await client.RestartAsync(instanceId);
+                        await durableTaskClient.RestartAsync(instanceId);
                     }
                 }
             }
             catch (Exception ex)
             {
                 log.LogError(ex.ToString());
-                res.Content = new StringContent("{status:\"Failed\" message:\""+ex.Message+"\"}", null, "application/json");
+                await response.WriteAsJsonAsync(
+                     new
+                     {
+                         status = "Failed",
+                         workflowstatus = ex.Message.ToString()
+                     }
+                 );
+                
             }
 
-            return res;
+            return response;
         }
 
-        [FunctionName(nameof(TriggerPeriodicAPIPoller))]
-        public async Task<HttpResponseMessage> TriggerPeriodicAPIPoller(
-            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestMessage req,
-            [DurableClient] IDurableOrchestrationClient client,
-            ILogger log)
+        [Function(nameof(TriggerPeriodicAPIPoller))]
+        public async Task<HttpResponseData> TriggerPeriodicAPIPoller(
+            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req,
+            [DurableClient] DurableTaskClient durableTaskClient
+            )
         {
             log.LogInformation("TriggerPeriodicAPIPoller");
 
@@ -526,16 +557,16 @@ namespace XRayConnector
 
             try
             {
-                DurableOrchestrationStatus status = await client.GetStatusAsync(PeriodicAPIPollerSingletoninstanceId);
+                var status = await durableTaskClient.GetInstanceAsync(PeriodicAPIPollerSingletoninstanceId);
                 if (status == null)
-                    await client.StartNewAsync(nameof(PeriodicAPIPoller), instanceId);
+                    await durableTaskClient.ScheduleNewOrchestrationInstanceAsync(nameof(PeriodicAPIPoller), null, new StartOrchestrationOptions() { InstanceId = instanceId });
                 else
                 {
                     log.LogWarning("PeriodicAPIPoller has been started prior! Status: '"+ status.RuntimeStatus.ToString() + "'");
                     if (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed || status.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
                     {
                         log.LogWarning("Restarting PeriodicAPIPoller!");
-                        await client.RestartAsync(instanceId);
+                        await durableTaskClient.RestartAsync(instanceId);
                     }
                 }
             }
@@ -543,32 +574,36 @@ namespace XRayConnector
             {
                 log.LogError(ex, "Unable to start 'PeriodicAPIPoller'");
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError);
-                res.Content = new StringContent("{status:\"Failed\"}", null, "application/json");
+                var faildResp = req.CreateResponse(HttpStatusCode.InternalServerError);
+                await faildResp.WriteAsJsonAsync(
+                    new { status = "Failed" }
+                );
+                return faildResp;
             }
 
             try
             {
-                return client.CreateCheckStatusResponse(req, instanceId);
+                return durableTaskClient.CreateCheckStatusResponse(req, instanceId);
             }
             catch(Exception ex) 
             {
                 //CreateCheckStatusResponse doesn't work when deployed on K8s, as it cannot resovle the webhook from the env-var
                 //https://github.com/Azure/azure-functions-host/issues/9024
                 log.LogWarning("Unable to execute 'CreateCheckStatusResponse': "+ex.Message);
-                    
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-                res.Content = new StringContent("{status:\"OK\"}", null, "application/json");
 
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { status = "OK" }
+                    );
+                return response;
+
             }
 
         }
 
-        [FunctionName(nameof(PeriodicAPIPoller))]
-        public static async Task PeriodicAPIPoller(
-            [OrchestrationTrigger] IDurableOrchestrationContext context, 
-            ILogger log)
+        [Function(nameof(PeriodicAPIPoller))]
+        public async Task PeriodicAPIPoller(
+            [OrchestrationTrigger] TaskOrchestrationContext context)
         {
             uint pollingIntervalSeconds;
             if (!UInt32.TryParse(Environment.GetEnvironmentVariable(PollingIntervalSeconds), out pollingIntervalSeconds))
@@ -597,78 +632,91 @@ namespace XRayConnector
         }
 
         //Due to a issue to get admin urls from CreateAndCheckResponse, add a dedicated function to terminate orchestration.
-        [FunctionName(nameof(TerminatePeriodicAPIPoller))]
-        public async Task<HttpResponseMessage> TerminatePeriodicAPIPoller(
-        [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestMessage req,
-        [DurableClient] IDurableOrchestrationClient client, ILogger log)
+        [Function(nameof(TerminatePeriodicAPIPoller))]
+        public async Task<HttpResponseData> TerminatePeriodicAPIPoller(
+        [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req,
+        [DurableClient] DurableTaskClient durableTaskClient)
         {
             try
             {
                 log.LogInformation("TerminatePeriodicAPIPoller");
 
-                await client.TerminateAsync(PeriodicAPIPollerSingletoninstanceId, "Manually aborted");
+                await durableTaskClient.TerminateInstanceAsync(PeriodicAPIPollerSingletoninstanceId, "Manually aborted");
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-                res.Content = new StringContent("{status:\"Success\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { status = "Success" }
+                    );
+                return response;
             }
             catch(Exception ex)
             {
                 log.LogError(ex, "Failed to terminate '" + PeriodicAPIPollerSingletoninstanceId + "'");
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError);
-                res.Content = new StringContent("{status:\"Failed\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+                await response.WriteAsJsonAsync(
+                    new { status = "Failed" }
+                    );
+                return response;
+               
             }
         }
 
         //Due to a issue to get admin urls from CreateAndCheckResponse, add a dedicated function to purge the database.
-        [FunctionName(nameof(PurgeHistory))]
-        public async Task<HttpResponseMessage> PurgeHistory(
-        [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestMessage req,
-        [DurableClient] IDurableOrchestrationClient client, ILogger log)
+        [Function(nameof(PurgeHistory))]
+        public async Task<HttpResponseData> PurgeHistory(
+        [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req,
+        [DurableClient] DurableTaskClient durableTaskClient)
         {
             try
             {
-                string content = await req.Content.ReadAsStringAsync();
+                string content = await req.ReadAsStringAsync();
                 long olderThan;
                 if (!long.TryParse(content, out olderThan))
                     olderThan = 60;
 
-                var purgeResult = await client.PurgeInstanceHistoryAsync(
-                    DateTime.MinValue,
+                var purgeResult = await durableTaskClient.PurgeInstancesAsync(
+                    null,
                     DateTime.UtcNow.AddMinutes(-1 * olderThan),
-                    new List<OrchestrationStatus>
+                    new List<OrchestrationRuntimeStatus>
                     {
-                        OrchestrationStatus.Completed, OrchestrationStatus.Failed, OrchestrationStatus.Canceled
+                        OrchestrationRuntimeStatus.Completed, 
+                        OrchestrationRuntimeStatus.Failed,
+                        OrchestrationRuntimeStatus.Terminated
                     });
 
-                log.LogInformation($"Purged history >{olderThan} minutes: {purgeResult.InstancesDeleted} instances deleted");
+                log.LogInformation($"Purged history >{olderThan} minutes: {purgeResult.PurgedInstanceCount} instances deleted");
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-                res.Content = new StringContent("{status:\"Success\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { status = "Success" }
+                    );
+                return response;
+                
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "Failed to purge history");
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError);
-                res.Content = new StringContent("{status:\"Failed\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+                await response.WriteAsJsonAsync(
+                    new { status = "Failed" }
+                    );
+                return response;
             }
         }
 
-        [FunctionName(nameof(TestPing))]
-        public Task<HttpResponseMessage> TestPing(
-            [HttpTrigger(AuthorizationLevel.Admin, "GET")] HttpRequestMessage req,
-            ILogger log)
+        [Function(nameof(TestPing))]
+        public async Task<HttpResponseData> TestPing(
+            [HttpTrigger(AuthorizationLevel.Admin, "GET")] HttpRequestData req)
         {
             log.LogInformation(nameof(TestPing));
 
-            var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-            res.Content = new StringContent("{status:\"ping successful\"}", null, "application/json");
-            return Task.FromResult(res);
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(
+                new { status = "ping successful" }
+                );
+            return response;
         }
 
 
@@ -712,10 +760,9 @@ namespace XRayConnector
         }
 
 
-        [FunctionName(nameof(TestGenerateSampleTrace))]
-        public async Task<HttpResponseMessage> TestGenerateSampleTrace(
-            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestMessage req,
-            ILogger log)
+        [Function(nameof(TestGenerateSampleTrace))]
+        public async Task<HttpResponseData> TestGenerateSampleTrace(
+            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req)
         {
             log.LogWarning(nameof(TestGenerateSampleTrace));
 
@@ -740,25 +787,28 @@ namespace XRayConnector
             {
                 var resp = await XRayClient?.PutTraceSegmentsAsync(seg);
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);    
-                res.Content = new StringContent("{status:\"ok\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { status = "ok" }
+                    );
+                return response;
             }
             catch (System.Exception)
             {
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);    
-                res.Content = new StringContent("{status:\"failed\"}", null, "application/json");
-                return res;
-                
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { status = "failed" }
+                    );
+                return response;
+
             }
 
         }
 
 
-        [FunctionName(nameof(TestSendSampleTrace))]
-        public async Task<HttpResponseMessage> TestSendSampleTrace(
-            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestMessage req,
-            ILogger log)
+        [Function(nameof(TestSendSampleTrace))]
+        public async Task<HttpResponseData> TestSendSampleTrace(
+            [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req)
         {
             log.LogWarning(nameof(TestSendSampleTrace));
             
@@ -803,17 +853,29 @@ namespace XRayConnector
                     throw new Exception("Couldn't send span. Status: " + (resp.StatusCode));
                 }
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-                res.Content = new StringContent("{status:\"ok\" message:\"Successfully sent span\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { 
+                        status = "ok",
+                        message="Successfully sent span"
+                    }
+                );
+                return response;
+
             }
             catch (System.Exception ex)
             {
                 log.LogError(ex, "TestSendSampleTrace failed!");
 
-                var res = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-                res.Content = new StringContent("{status:\"failed\" error:\""+ex.Message+"\"}", null, "application/json");
-                return res;
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(
+                    new { 
+                        status = "failed",
+                        error = ex.Message.ToString()
+                    }
+                );
+                return response;
+                
             }
         }
 

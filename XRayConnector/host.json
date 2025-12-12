@@ -1,16 +1,17 @@
 {
   "version": "2.0",
   "extensions": {
-    "durableTask": {
-      "maxConcurrentOrchestratorFunctions": 8,
-      "maxConcurrentActivityFunctions": 8,
-      "storageProvider": {
+  "durableTask": {
+    "hubName": "xrayconnector",
+    "maxConcurrentOrchestratorFunctions": 8,
+    "maxConcurrentActivityFunctions": 8,
+    "storageProvider": {
         "type": "mssql",
         "connectionStringName": "SQLDB_Connection",
         "createDatabaseIfNotExists": true
       }
-    }
-  },
+  }
+},
   "logging": {
     "logLevel": {
       "default": "Information",
