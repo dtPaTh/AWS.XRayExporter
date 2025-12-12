@@ -23,3 +23,5 @@ stringData:
   PollingIntervalSeconds: "300"  
   # If set to True the workflow is automatically started. 
   AutoStart: "True"
+  # If set to True (Recommended) the internal processing of tracedetails is compressed. Improves workflow performance and reduces I/O load on the database.
+  EnableJsonPayloadCompression: "True"

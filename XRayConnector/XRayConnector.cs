@@ -94,18 +94,18 @@ namespace XRayConnector
             }
         }
 
+        private readonly ILogger _log;
         private readonly IHttpClientFactory _httpClientFactory;
-        
+        private readonly JsonPayloadHelper _jsonPayloadHelper;
 
         private static SessionAWSCredentials _sessionCredentials;
         private static DateTime _credentialsExpiration;
 
-        ILogger log;
-
-        public XRayConnector(IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory)
+        public XRayConnector(ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory, JsonPayloadHelper jsonPayloadHelper)
         {
+            _log = loggerFactory.CreateLogger<XRayConnector>();
             _httpClientFactory = httpClientFactory;
-            log = loggerFactory.CreateLogger<XRayConnector>();
+            _jsonPayloadHelper = jsonPayloadHelper;
 
             SimulatorMode = Enum.TryParse(SimulatorMode.GetType(), Environment.GetEnvironmentVariable(SimulatorModeCfg), true, out object result) ? (TestSimulator)result : TestSimulator.Off;
         }
@@ -231,7 +231,7 @@ namespace XRayConnector
                 {
                     var resp = await XRayClient.GetTraceSummariesAsync(req);
 
-                    log.LogInformation($"Traces retrieved: {resp.TraceSummaries.Count}");
+                    _log.LogInformation($"Traces retrieved: {resp.TraceSummaries.Count}");
                     if (resp.TraceSummaries.Count > 0)
                     {
                         var traceIds = new List<string>(resp.TraceSummaries.Count);
@@ -247,21 +247,21 @@ namespace XRayConnector
                 } 
                 catch (ThrottledException ex)
                 {
-                    log.LogWarning($"Request throttled: {ex.Message}");
+                    _log.LogWarning($"Request throttled: {ex.Message}");
                 }
                 catch (AmazonServiceException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                 {
-                    log.LogWarning($"Too many requests (429): {ex.Message}");
+                    _log.LogWarning($"Too many requests (429): {ex.Message}");
                 }
                 catch (Exception ex)
                 {
-                    log.LogError(ex, "GetTraces failed");
+                    _log.LogError(ex, "GetTraces failed");
                 }
 
             }
             else
             {
-                log.LogWarning("Skip XRay API polling - client not initialized");
+                _log.LogWarning("Skip XRay API polling - client not initialized");
             }
 
             return null;
@@ -277,7 +277,7 @@ namespace XRayConnector
                 EndTime = req.EndTime,
                 NextToken = req.NextToken
             };
-            log.LogInformation("GetTraceSummaries@" + req.StartTime + " - " + req.EndTime);
+            _log.LogInformation("GetTraceSummaries@" + req.StartTime + " - " + req.EndTime);
 
             return await GetTraces(reqObj);
         }
@@ -308,7 +308,7 @@ namespace XRayConnector
 
                 var res = new TraceDetailsResult
                 {
-                    Traces = sb.ToString(),
+                    Traces = _jsonPayloadHelper.Serialize(sb.ToString()),
                     NextToken = resp.NextToken
                 };
 
@@ -316,15 +316,15 @@ namespace XRayConnector
             }
             catch (ThrottledException ex)
             {
-                log.LogWarning($"Request throttled: {ex.Message}");
+                _log.LogWarning($"Request throttled: {ex.Message}");
             }
             catch (AmazonServiceException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
             {
-                log.LogWarning($"Too many requests (429): {ex.Message}");
+                _log.LogWarning($"Too many requests (429): {ex.Message}");
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "GetTraceDetails failed");
+                _log.LogError(ex, "GetTraceDetails failed");
             }
 
             return null;
@@ -349,7 +349,9 @@ namespace XRayConnector
         {
             try
             {
-                log.LogDebug(tracesJson);
+                tracesJson = _jsonPayloadHelper.Deserialize(tracesJson);
+
+                _log.LogDebug(tracesJson);
 
                 if (SimulatorMode == TestSimulator.Off)
                 {
@@ -381,13 +383,13 @@ namespace XRayConnector
                 }
                 else
                 {
-                    log.LogInformation("Demo mode: skipping OTLP export");
+                    _log.LogInformation("Demo mode: skipping OTLP export");
                 }
 
             }
             catch (Exception e)
             {
-                log.LogError(e, "Couldn't process tracedetails");
+                _log.LogError(e, "Couldn't process tracedetails");
 
                 return false;
             }
@@ -494,7 +496,7 @@ namespace XRayConnector
                         );
 
 
-                        log.LogWarning($"PeriodicAPIPoller has not been started. Automatically starting.. ");
+                        _log.LogWarning($"PeriodicAPIPoller has not been started. Automatically starting.. ");
                         await durableTaskClient.ScheduleNewOrchestrationInstanceAsync(nameof(PeriodicAPIPoller), null, new StartOrchestrationOptions() { InstanceId = instanceId });
                     }
                     else
@@ -521,17 +523,17 @@ namespace XRayConnector
                         }
                     );
 
-                    log.LogWarning("PeriodicAPIPoller has been started prior! Status: '" + status.RuntimeStatus.ToString() + "'");
+                    _log.LogWarning("PeriodicAPIPoller has been started prior! Status: '" + status.RuntimeStatus.ToString() + "'");
                     if (AutoStartWorkflow && (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed || status.RuntimeStatus == OrchestrationRuntimeStatus.Terminated))
                     {
-                        log.LogWarning("Restarting PeriodicAPIPoller!");
+                        _log.LogWarning("Restarting PeriodicAPIPoller!");
                         await durableTaskClient.RestartAsync(instanceId);
                     }
                 }
             }
             catch (Exception ex)
             {
-                log.LogError(ex.ToString());
+                _log.LogError(ex.ToString());
                 await response.WriteAsJsonAsync(
                      new
                      {
@@ -551,7 +553,7 @@ namespace XRayConnector
             [DurableClient] DurableTaskClient durableTaskClient
             )
         {
-            log.LogInformation("TriggerPeriodicAPIPoller");
+            _log.LogInformation("TriggerPeriodicAPIPoller");
 
             string instanceId = PeriodicAPIPollerSingletoninstanceId; 
 
@@ -562,17 +564,17 @@ namespace XRayConnector
                     await durableTaskClient.ScheduleNewOrchestrationInstanceAsync(nameof(PeriodicAPIPoller), null, new StartOrchestrationOptions() { InstanceId = instanceId });
                 else
                 {
-                    log.LogWarning("PeriodicAPIPoller has been started prior! Status: '"+ status.RuntimeStatus.ToString() + "'");
+                    _log.LogWarning("PeriodicAPIPoller has been started prior! Status: '"+ status.RuntimeStatus.ToString() + "'");
                     if (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed || status.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
                     {
-                        log.LogWarning("Restarting PeriodicAPIPoller!");
+                        _log.LogWarning("Restarting PeriodicAPIPoller!");
                         await durableTaskClient.RestartAsync(instanceId);
                     }
                 }
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Unable to start 'PeriodicAPIPoller'");
+                _log.LogError(ex, "Unable to start 'PeriodicAPIPoller'");
 
                 var faildResp = req.CreateResponse(HttpStatusCode.InternalServerError);
                 await faildResp.WriteAsJsonAsync(
@@ -589,7 +591,7 @@ namespace XRayConnector
             {
                 //CreateCheckStatusResponse doesn't work when deployed on K8s, as it cannot resovle the webhook from the env-var
                 //https://github.com/Azure/azure-functions-host/issues/9024
-                log.LogWarning("Unable to execute 'CreateCheckStatusResponse': "+ex.Message);
+                _log.LogWarning("Unable to execute 'CreateCheckStatusResponse': "+ex.Message);
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(
@@ -615,11 +617,11 @@ namespace XRayConnector
                 else
                 {
                     pollingIntervalSeconds = 180;
-                    log.LogWarning("Unable to parse PollingIntervalSeconds, using default value (180sec)");
+                    _log.LogWarning("Unable to parse PollingIntervalSeconds, using default value (180sec)");
                 }
             }
 
-            log.LogInformation("PeriodicAPIPoller @" + pollingIntervalSeconds + "s");
+            _log.LogInformation("PeriodicAPIPoller @" + pollingIntervalSeconds + "s");
 
             var identityKey = Environment.GetEnvironmentVariable(AWSIdentityKey);
             await context.CallSubOrchestratorAsync(nameof(RetrieveRecentTraces), pollingIntervalSeconds);
@@ -639,7 +641,7 @@ namespace XRayConnector
         {
             try
             {
-                log.LogInformation("TerminatePeriodicAPIPoller");
+                _log.LogInformation("TerminatePeriodicAPIPoller");
 
                 await durableTaskClient.TerminateInstanceAsync(PeriodicAPIPollerSingletoninstanceId, "Manually aborted");
 
@@ -651,7 +653,7 @@ namespace XRayConnector
             }
             catch(Exception ex)
             {
-                log.LogError(ex, "Failed to terminate '" + PeriodicAPIPollerSingletoninstanceId + "'");
+                _log.LogError(ex, "Failed to terminate '" + PeriodicAPIPollerSingletoninstanceId + "'");
 
                 var response = req.CreateResponse(HttpStatusCode.InternalServerError);
                 await response.WriteAsJsonAsync(
@@ -685,7 +687,7 @@ namespace XRayConnector
                         OrchestrationRuntimeStatus.Terminated
                     });
 
-                log.LogInformation($"Purged history >{olderThan} minutes: {purgeResult.PurgedInstanceCount} instances deleted");
+                _log.LogInformation($"Purged history >{olderThan} minutes: {purgeResult.PurgedInstanceCount} instances deleted");
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(
@@ -696,7 +698,7 @@ namespace XRayConnector
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Failed to purge history");
+                _log.LogError(ex, "Failed to purge history");
 
                 var response = req.CreateResponse(HttpStatusCode.InternalServerError);
                 await response.WriteAsJsonAsync(
@@ -710,7 +712,7 @@ namespace XRayConnector
         public async Task<HttpResponseData> TestPing(
             [HttpTrigger(AuthorizationLevel.Admin, "GET")] HttpRequestData req)
         {
-            log.LogInformation(nameof(TestPing));
+            _log.LogInformation(nameof(TestPing));
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             await response.WriteAsJsonAsync(
@@ -764,7 +766,7 @@ namespace XRayConnector
         public async Task<HttpResponseData> TestGenerateSampleTrace(
             [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req)
         {
-            log.LogWarning(nameof(TestGenerateSampleTrace));
+            _log.LogWarning(nameof(TestGenerateSampleTrace));
 
             PutTraceSegmentsRequest seg = new PutTraceSegmentsRequest();
             string rootSegment = "{\"id\":\"194fcc8747581230\",\"name\":\"Scorekeep\",\"start_time\":@S1,\"end_time\":@E1,\"http\":{\"request\":{\"url\":\"http://scorekeep.elasticbeanstalk.com/api/user\",\"method\":\"POST\",\"user_agent\":\"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36\",\"client_ip\":\"205.251.233.183\"},\"response\":{\"status\":200}},\"aws\":{\"elastic_beanstalk\":{\"version_label\":\"app-abb9-170708_002045\",\"deployment_id\":406,\"environment_name\":\"scorekeep-dev\"},\"ec2\":{\"availability_zone\":\"us-west-2c\",\"instance_id\":\"i-0cd9e448944061b4a\"},\"xray\":{\"sdk_version\":\"1.1.2\",\"sdk\":\"X-Ray for Java\"}},\"service\":{},\"trace_id\":\"@TRACEID\",\"user\":\"5M388M1E\",\"origin\":\"AWS::ElasticBeanstalk::Environment\",\"subsegments\":[{\"id\":\"0c544c1b1bbff948\",\"name\":\"Lambda\",\"start_time\":@S1_1,\"end_time\":@E1_1,\"http\":{\"response\":{\"status\":200,\"content_length\":14}},\"aws\":{\"log_type\":\"None\",\"status_code\":200,\"function_name\":\"random-name\",\"invocation_type\":\"RequestResponse\",\"operation\":\"Invoke\",\"request_id\":\"ac086670-6373-11e7-a174-f31b3397f190\",\"resource_names\":[\"random-name\"]},\"namespace\":\"aws\"},{\"id\":\"071684f2e555e571\",\"name\":\"## UserModel.saveUser\",\"start_time\":@S1_1,\"end_time\":@E1_1,\"metadata\":{\"debug\":{\"test\":\"Metadata string from UserModel.saveUser\"}},\"subsegments\":[{\"id\":\"4cd3f10b76c624b4\",\"name\":\"DynamoDB\",\"start_time\":@S1_1_1,\"end_time\":@E1_1_1,\"http\":{\"response\":{\"status\":200,\"content_length\":57}},\"aws\":{\"table_name\":\"scorekeep-user\",\"operation\":\"UpdateItem\",\"request_id\":\"MFQ8CGJ3JTDDVVVASUAAJGQ6NJ82F738BOB4KQNSO5AEMVJF66Q9\",\"resource_names\":[\"scorekeep-user\"]},\"namespace\":\"aws\"}]}]}";
@@ -810,7 +812,7 @@ namespace XRayConnector
         public async Task<HttpResponseData> TestSendSampleTrace(
             [HttpTrigger(AuthorizationLevel.Admin, "POST")] HttpRequestData req)
         {
-            log.LogWarning(nameof(TestSendSampleTrace));
+            _log.LogWarning(nameof(TestSendSampleTrace));
             
             string rootSegment = "[{\"id\":\"194fcc8747581230\",\"name\":\"Scorekeep\",\"start_time\":@S1,\"end_time\":@E1,\"http\":{\"request\":{\"url\":\"http://scorekeep.elasticbeanstalk.com/api/user\",\"method\":\"POST\",\"user_agent\":\"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Safari/537.36\",\"client_ip\":\"205.251.233.183\"},\"response\":{\"status\":200}},\"aws\":{\"elastic_beanstalk\":{\"version_label\":\"app-abb9-170708_002045\",\"deployment_id\":406,\"environment_name\":\"scorekeep-dev\"},\"ec2\":{\"availability_zone\":\"us-west-2c\",\"instance_id\":\"i-0cd9e448944061b4a\"},\"xray\":{\"sdk_version\":\"1.1.2\",\"sdk\":\"X-Ray for Java\"}},\"service\":{},\"trace_id\":\"@TRACEID\",\"user\":\"5M388M1E\",\"origin\":\"AWS::ElasticBeanstalk::Environment\",\"subsegments\":[{\"id\":\"0c544c1b1bbff948\",\"name\":\"Lambda\",\"start_time\":@S1_1,\"end_time\":@E1_1,\"http\":{\"response\":{\"status\":200,\"content_length\":14}},\"aws\":{\"log_type\":\"None\",\"status_code\":200,\"function_name\":\"random-name\",\"invocation_type\":\"RequestResponse\",\"operation\":\"Invoke\",\"request_id\":\"ac086670-6373-11e7-a174-f31b3397f190\",\"resource_names\":[\"random-name\"]},\"namespace\":\"aws\"},{\"id\":\"071684f2e555e571\",\"name\":\"## UserModel.saveUser\",\"start_time\":@S1_1,\"end_time\":@E1_1,\"metadata\":{\"debug\":{\"test\":\"Metadata string from UserModel.saveUser\"}},\"subsegments\":[{\"id\":\"4cd3f10b76c624b4\",\"name\":\"DynamoDB\",\"start_time\":@S1_1_1,\"end_time\":@E1_1_1,\"http\":{\"response\":{\"status\":200,\"content_length\":57}},\"aws\":{\"table_name\":\"scorekeep-user\",\"operation\":\"UpdateItem\",\"request_id\":\"MFQ8CGJ3JTDDVVVASUAAJGQ6NJ82F738BOB4KQNSO5AEMVJF66Q9\",\"resource_names\":[\"scorekeep-user\"]},\"namespace\":\"aws\"}]}]}]";
 
@@ -865,7 +867,7 @@ namespace XRayConnector
             }
             catch (System.Exception ex)
             {
-                log.LogError(ex, "TestSendSampleTrace failed!");
+                _log.LogError(ex, "TestSendSampleTrace failed!");
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(
