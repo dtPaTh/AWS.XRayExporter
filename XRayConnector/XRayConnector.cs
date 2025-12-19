@@ -266,7 +266,7 @@ namespace XRayConnector
 
         [Function(nameof(RetrieveRecentTraces))]
         public async Task RetrieveRecentTraces(
-            [OrchestrationTrigger] TaskOrchestrationContext context, CancellationToken cancellationToken)
+            [OrchestrationTrigger] TaskOrchestrationContext context)
         {
 
             var getTraces = context.GetInput<TracesRequest>();
@@ -437,7 +437,7 @@ namespace XRayConnector
 
             bool skip = false;
             DateTime currentTime;
-            DateTime? scheduledRun = context.GetInput<DateTime?>);
+            DateTime? scheduledRun = context.GetInput<DateTime?>();
             if (scheduledRun == null)
             {
                 currentTime = context.CurrentUtcDateTime;
