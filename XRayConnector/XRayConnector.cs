@@ -1,7 +1,4 @@
 using Amazon.Runtime;
-using Amazon.SecurityToken;
-using Amazon.SecurityToken.Model;
-using Amazon.XRay;
 using Amazon.XRay.Model;
 using AmazonSDKWrapper;
 using Microsoft.Azure.Functions.Worker;
@@ -19,36 +16,22 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using XRayConnector.Metrics;
 
 namespace XRayConnector
 {
     public class XRayConnector
     {
         private const string PeriodicAPIPollerSingletoninstanceId = "SinglePeriodicAPIPoller";
-        private const string AWSIdentityKey = "AWS_IdentityKey";
-        private const string AWSSecretKey = "AWS_SecretKey";
-        private const string AWSRegionEndpoint = "AWS_RegionEndpoint";
-        private const string AWSRoleArn = "AWS_RoleArn";
-        private const string AWSRoleSessionDurationSeconds = "AWS_RoleSessionDurationSeconds";
         private const string PollingIntervalSeconds = "PollingIntervalSeconds";
         private const string PollingIntervalMinutes = "PollingIntervalMinutes";
         private const string AutoStart = "AutoStart";
 
-#region Simulator 
-
-        enum TestSimulator
-        { 
-            Off, 
-            XRayApi
-        }
-        private TestSimulator SimulatorMode = TestSimulator.Off;
-
-        
-        private const string SimulatorModeCfg = "SimulatorMode";
-        private const string SimulatorTraceSummariesResponseCount = "SIM_TraceSummariesResponseCount";
-        private const string SimulatorTraceSummariesPageSize = "SIM_TraceSummariesPageSize";
-        
-        #endregion
+        private readonly ILogger _log;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly JsonPayloadHelper _jsonPayloadHelper;
+        private readonly IXRayClient _xrayClient;
+        private readonly IApiMetricsProvider _metricsProvider;
 
         private bool AutoStartWorkflow
         {
@@ -59,178 +42,25 @@ namespace XRayConnector
             }
         }
 
-
-        private const string AWSRoleSession = PeriodicAPIPollerSingletoninstanceId;
-
-        private IXRayClient _xrayClient = null;
-        private IXRayClient XRayClient
+        public XRayConnector(ILogger<XRayConnector> logger, IHttpClientFactory httpClientFactory, JsonPayloadHelper jsonPayloadHelper, IXRayClient xRayClient = null, IApiMetricsProvider metricsProvider = null)
         {
-            get
-            {
-                if (SimulatorMode != TestSimulator.XRayApi)
-                {
-                    if (_xrayClient == null || SessionCredentialsExpired())
-                    {
-                        _xrayClient = new XRayClient(InitializeXRayClient().GetAwaiter().GetResult());
-                    }
-                }
-                else
-                {
-                    if (_xrayClient == null)
-                    {
-                        ushort simTraceCountPerSummariesRequest;
-                        byte simPageSize;
-                        if (!ushort.TryParse(Environment.GetEnvironmentVariable(SimulatorTraceSummariesResponseCount), out simTraceCountPerSummariesRequest))
-                            simTraceCountPerSummariesRequest = 10;
-                        
-                        if (!byte.TryParse(Environment.GetEnvironmentVariable(SimulatorTraceSummariesPageSize), out simPageSize))
-                            simPageSize = 2;
-
-                        _xrayClient = new XRayClientSimulator(simTraceCountPerSummariesRequest, simPageSize);
-                    }
-                }
-
-                return _xrayClient;
-            }
-        }
-
-        private readonly ILogger _log;
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly JsonPayloadHelper _jsonPayloadHelper;
-
-        private static SessionAWSCredentials _sessionCredentials;
-        private static DateTime _credentialsExpiration;
-
-        public XRayConnector(ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory, JsonPayloadHelper jsonPayloadHelper)
-        {
-            _log = loggerFactory.CreateLogger<XRayConnector>();
+            _log = logger;
             _httpClientFactory = httpClientFactory;
             _jsonPayloadHelper = jsonPayloadHelper;
-
-            SimulatorMode = Enum.TryParse(SimulatorMode.GetType(), Environment.GetEnvironmentVariable(SimulatorModeCfg), true, out object result) ? (TestSimulator)result : TestSimulator.Off;
+            _metricsProvider = metricsProvider;
+            _xrayClient = xRayClient;
         }
 
-        private async Task<AmazonXRayClient> InitializeXRayClient()
-        {
-            // Check if AWSRoleArn is set; if not, skip AssumeRole
-            var roleArn = Environment.GetEnvironmentVariable(AWSRoleArn);
-            var regionEndpoint = Environment.GetEnvironmentVariable(AWSRegionEndpoint);
-
-            if (!string.IsNullOrEmpty(roleArn) && !string.IsNullOrEmpty(regionEndpoint))
-            {
-                try
-                {
-                    var sessionCredentials = await GetAWSCredentials();
-
-                    return new AmazonXRayClient(
-                        sessionCredentials, 
-                        Amazon.RegionEndpoint.GetBySystemName(regionEndpoint));
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException("An unexpected error occurred while initializing the X-Ray client with assume role.", ex);
-                }
-            }
-            else
-            {
-                var identityKey = Environment.GetEnvironmentVariable(AWSIdentityKey);
-                var secretKey = Environment.GetEnvironmentVariable(AWSSecretKey);
-                if (!String.IsNullOrEmpty(identityKey) && !String.IsNullOrEmpty(secretKey))
-                {
-                    if (!String.IsNullOrEmpty(regionEndpoint))
-                    {
-                        return new AmazonXRayClient(
-                            identityKey,
-                            secretKey,
-                            Amazon.RegionEndpoint.GetBySystemName(regionEndpoint));
-                    }
-                    else
-                    {
-                        return new AmazonXRayClient(
-                            identityKey,
-                            secretKey);
-                    }
-                }
-
-            }
-
-            return null;
-        }
-
-        private static bool SessionCredentialsExpired()
-        {
-            // Check if AWSRoleArn is set
-            var roleArn = Environment.GetEnvironmentVariable(AWSRoleArn);
-            var regionEndpoint = Environment.GetEnvironmentVariable(AWSRegionEndpoint);
-
-            if (!string.IsNullOrEmpty(roleArn) && !string.IsNullOrEmpty(regionEndpoint))
-            {
-                return _sessionCredentials == null || DateTime.UtcNow >= _credentialsExpiration;
-            }
-
-            return false;
-        }
-
-        private static async Task<SessionAWSCredentials> GetAWSCredentials()
-        {
-            if (SessionCredentialsExpired())
-            {
-                var stsClient = new AmazonSecurityTokenServiceClient();
-
-                int sessionDuration;
-                if (!Int32.TryParse(Environment.GetEnvironmentVariable(AWSRoleSessionDurationSeconds), out sessionDuration))
-                    sessionDuration = 3600;
-                else if (sessionDuration < 600)
-                    sessionDuration = 600;
-
-                var assumeRole = new AssumeRoleRequest
-                {
-                    RoleArn = Environment.GetEnvironmentVariable(AWSRoleArn),
-                    RoleSessionName = AWSRoleSession,
-                    DurationSeconds = sessionDuration
-                };
-
-                if (!String.IsNullOrEmpty(assumeRole.RoleArn))
-                {
-                    try
-                    {
-                        var assumeRoleResponse = await stsClient.AssumeRoleAsync(assumeRole);
-
-                        _sessionCredentials = new SessionAWSCredentials(
-                            assumeRoleResponse.Credentials.AccessKeyId,
-                            assumeRoleResponse.Credentials.SecretAccessKey,
-                            assumeRoleResponse.Credentials.SessionToken
-                        );
-
-                        // Set expiration time (5 minutes before actual expiration)
-                        _credentialsExpiration = DateTime.UtcNow.AddSeconds(assumeRoleResponse.Credentials.Expiration.Subtract(DateTime.UtcNow).TotalSeconds - 300);
-
-                    }
-                    catch (AmazonSecurityTokenServiceException ex)
-                    {
-                        throw new InvalidOperationException("Failed to assume role with AWS STS.", ex);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        throw new InvalidOperationException("Invalid region endpoint or missing credentials.", ex);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new InvalidOperationException("An unexpected error occurred while initializing the X-Ray client.", ex);
-                    }
-                }
-            }
-
-            return _sessionCredentials;
-        }
         public async Task<TracesResult> GetTraces(GetTraceSummariesRequest req)
         {
-            if (XRayClient != null)
+            if (_xrayClient != null)
             {
                 try
                 {
-                    var resp = await XRayClient.GetTraceSummariesAsync(req);
+                    _metricsProvider?.RecordApiOperation("XRay", "n/a","GetTraceSummaries",!String.IsNullOrEmpty(req.NextToken));
+                    var resp = await _xrayClient.GetTraceSummariesAsync(req);
 
+                    _metricsProvider?.RecordApiResponseObjects("XRay", "n/a","Traces", resp.TraceSummaries.Count);
                     _log.LogInformation($"Traces retrieved: {resp.TraceSummaries.Count}");
                     if (resp.TraceSummaries.Count > 0)
                     {
@@ -244,7 +74,7 @@ namespace XRayConnector
 
                         return res;
                     }
-                } 
+                }
                 catch (ThrottledException ex)
                 {
                     _log.LogWarning($"Request throttled: {ex.Message}");
@@ -277,7 +107,7 @@ namespace XRayConnector
                 EndTime = req.EndTime,
                 NextToken = req.NextToken
             };
-            _log.LogInformation("GetTraceSummaries@" + req.StartTime + " - " + req.EndTime);
+            _log.LogInformation("GetTraceSummaries@" + req.StartTime + " - " + req.EndTime+", "+ req.NextToken);
 
             return await GetTraces(reqObj);
         }
@@ -288,7 +118,8 @@ namespace XRayConnector
     
             try
             {
-                BatchGetTracesResponse resp = await XRayClient.BatchGetTracesAsync(req);
+                _metricsProvider?.RecordApiOperation("XRay", "n/a", "BatchGetTraces", !String.IsNullOrEmpty(req.NextToken));
+                BatchGetTracesResponse resp = await _xrayClient.BatchGetTracesAsync(req);
 
                 //serialize segements into a json array, to avoid additional (de)serialization overhead
                 StringBuilder sb = new StringBuilder();
@@ -353,37 +184,33 @@ namespace XRayConnector
 
                 _log.LogDebug(tracesJson);
 
-                if (SimulatorMode == TestSimulator.Off)
+                var jsonDoc = JsonDocument.Parse(tracesJson);
+
+                var conv = new XRay2OTLP.Convert(null);
+                var exportTraceServiceRequest = conv.FromXRaySegmentDocArray(jsonDoc);
+
+                var httpClient = _httpClientFactory.CreateClient("XRayConnector");
+
+                var authHeader = Environment.GetEnvironmentVariable("OTLP_HEADER_AUTHORIZATION");
+                if (!String.IsNullOrEmpty(authHeader))
+                    httpClient.DefaultRequestHeaders.Add("Authorization", authHeader);
+
+                var otlpEndpoint = Environment.GetEnvironmentVariable("OTLP_ENDPOINT");
+                if (!otlpEndpoint.Contains("v1/traces"))
+                    if (otlpEndpoint.EndsWith("/"))
+                        otlpEndpoint = otlpEndpoint += "v1/traces";
+                    else
+                        otlpEndpoint = otlpEndpoint += "/v1/traces";
+
+                var content = new XRay2OTLP.ExportRequestContent(exportTraceServiceRequest);
+
+                if (_xrayClient is not XRayClientSimulator)
                 {
-                    var jsonDoc = JsonDocument.Parse(tracesJson);
-
-                    var conv = new XRay2OTLP.Convert(null);
-                    var exportTraceServiceRequest = conv.FromXRaySegmentDocArray(jsonDoc);
-
-                    var httpClient = _httpClientFactory.CreateClient("XRayConnector");
-
-                    var authHeader = Environment.GetEnvironmentVariable("OTLP_HEADER_AUTHORIZATION");
-                    if (!String.IsNullOrEmpty(authHeader))
-                        httpClient.DefaultRequestHeaders.Add("Authorization", authHeader);
-
-                    var otlpEndpoint = Environment.GetEnvironmentVariable("OTLP_ENDPOINT");
-                    if (!otlpEndpoint.Contains("v1/traces"))
-                        if (otlpEndpoint.EndsWith("/"))
-                            otlpEndpoint = otlpEndpoint += "v1/traces";
-                        else
-                            otlpEndpoint = otlpEndpoint += "/v1/traces";
-
-                    var content = new XRay2OTLP.ExportRequestContent(exportTraceServiceRequest);
-
                     var res = await httpClient.PostAsync(otlpEndpoint, content);
                     if (!res.IsSuccessStatusCode)
                     {
                         throw new Exception("Couldn't send span. Status: " + (res.StatusCode));
                     }
-                }
-                else
-                {
-                    _log.LogInformation("Demo mode: skipping OTLP export");
                 }
 
             }
@@ -416,12 +243,16 @@ namespace XRayConnector
                         string nextToken = traceDetails.NextToken;
                         while (!String.IsNullOrEmpty(nextToken))
                         {
-                            getTraceDetails.NextToken = nextToken;
-                            traceDetails = await context.CallActivityAsync<TraceDetailsResult>(nameof(GetTraceDetails), getTraceDetails);
-                            if (traceDetails != null)
+                            var getNextTraceDetails = new TraceDetailsRequest()
                             {
-                                await context.CallActivityAsync<bool>(nameof(ProcessTraces), traceDetails.Traces);
-                                nextToken = traceDetails.NextToken;
+                                TraceIds = traceBatch,
+                                NextToken = nextToken
+                            };
+                            var nextTraceDetails = await context.CallActivityAsync<TraceDetailsResult>(nameof(GetTraceDetails), getNextTraceDetails);
+                            if (nextTraceDetails != null)
+                            {
+                                await context.CallActivityAsync<bool>(nameof(ProcessTraces), nextTraceDetails.Traces);
+                                nextToken = nextTraceDetails.NextToken;
                             }
                             else
                                 nextToken = null;
@@ -429,24 +260,20 @@ namespace XRayConnector
                     }
                 }
             }
+
+            return; 
         }
 
         [Function(nameof(RetrieveRecentTraces))]
         public async Task RetrieveRecentTraces(
-            [OrchestrationTrigger] TaskOrchestrationContext context)
+            [OrchestrationTrigger] TaskOrchestrationContext context, CancellationToken cancellationToken)
         {
 
-            var currentTime = context.CurrentUtcDateTime; //https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-code-constraints?tabs=csharp#dates-and-times
-            var pollingInterval = -1 * context.GetInput<uint>();
+            var getTraces = context.GetInput<TracesRequest>();
+            _log.LogInformation("RetrieveRecentTraces@" + getTraces.StartTime + " - " + getTraces.EndTime+": "+ getTraces.EndTime.Subtract(getTraces.StartTime).TotalSeconds); 
 
-            var getTraces = new TracesRequest()
-            {
-                StartTime = currentTime.AddSeconds(pollingInterval),
-                EndTime = currentTime
-            };
-
-            
             var traces = await context.CallActivityAsync<TracesResult>(nameof(GetRecentTraceIds), getTraces);
+
             if (traces != null)
             {
                 await context.CallSubOrchestratorAsync(nameof(RetrieveTraceDetails), traces);
@@ -467,6 +294,8 @@ namespace XRayConnector
 
                 }
             }
+
+            return;
         }
 
         [Function(nameof(WorkflowWatchdog))]
@@ -475,7 +304,6 @@ namespace XRayConnector
             [DurableClient] DurableTaskClient durableTaskClient)
         {
             var response = req.CreateResponse(HttpStatusCode.OK);
-
             
             try
             {
@@ -494,7 +322,6 @@ namespace XRayConnector
                                 workflowstatus = "Starting"
                             }
                         );
-
 
                         _log.LogWarning($"PeriodicAPIPoller has not been started. Automatically starting.. ");
                         await durableTaskClient.ScheduleNewOrchestrationInstanceAsync(nameof(PeriodicAPIPoller), null, new StartOrchestrationOptions() { InstanceId = instanceId });
@@ -604,9 +431,32 @@ namespace XRayConnector
         }
 
         [Function(nameof(PeriodicAPIPoller))]
-        public async Task PeriodicAPIPoller(
-            [OrchestrationTrigger] TaskOrchestrationContext context)
+        public async Task PeriodicAPIPoller([OrchestrationTrigger] TaskOrchestrationContext context)
         {
+            _metricsProvider?.RecordMemoryUsage();
+
+            bool skip = false;
+            DateTime currentTime;
+            DateTime? scheduledRun = context.GetInput<DateTime?>);
+            if (scheduledRun == null)
+            {
+                currentTime = context.CurrentUtcDateTime;
+            }
+            else
+            {
+                uint maximumReplayHistorySeconds;
+                if (!UInt32.TryParse(Environment.GetEnvironmentVariable("MaximumReplayHistorySeconds"), out maximumReplayHistorySeconds))
+                    maximumReplayHistorySeconds = 900; //default 15min
+
+                if (scheduledRun.Value <= context.CurrentUtcDateTime.AddSeconds(-maximumReplayHistorySeconds)) 
+                {
+                    _log.LogWarning($"Scheduled timeframe lags to much behind (> {maximumReplayHistorySeconds}s). Reset to current time. {scheduledRun.Value.ToString("o")} vs {context.CurrentUtcDateTime.ToString("o")}");
+                    currentTime = context.CurrentUtcDateTime;
+                }
+                else
+                    currentTime = scheduledRun.Value;
+            }
+
             uint pollingIntervalSeconds;
             if (!UInt32.TryParse(Environment.GetEnvironmentVariable(PollingIntervalSeconds), out pollingIntervalSeconds))
             {
@@ -623,14 +473,25 @@ namespace XRayConnector
 
             _log.LogInformation("PeriodicAPIPoller @" + pollingIntervalSeconds + "s");
 
-            var identityKey = Environment.GetEnvironmentVariable(AWSIdentityKey);
-            await context.CallSubOrchestratorAsync(nameof(RetrieveRecentTraces), pollingIntervalSeconds);
-            
-            // sleep for x minutes before next poll
-            DateTime nextCleanup = context.CurrentUtcDateTime.AddSeconds(pollingIntervalSeconds);
-            await context.CreateTimer(nextCleanup, CancellationToken.None);
+            var getTraces = new TracesRequest()
+            {
+                StartTime = currentTime.AddSeconds(-1 * pollingIntervalSeconds),
+                EndTime = currentTime
+            };
 
-            context.ContinueAsNew(null);
+            await context.CallSubOrchestratorAsync(nameof(RetrieveRecentTraces), getTraces);
+
+            _metricsProvider?.RecordMemoryUsage();
+
+            DateTime nextRun = currentTime.AddSeconds(pollingIntervalSeconds);
+            if (nextRun <= context.CurrentUtcDateTime)
+                nextRun = context.CurrentUtcDateTime.AddSeconds(pollingIntervalSeconds);
+
+            // sleep for x seconds before next poll
+            await context.CreateTimer(nextRun, CancellationToken.None);
+            context.ContinueAsNew(nextRun);
+
+            return;
         }
 
         //Due to a issue to get admin urls from CreateAndCheckResponse, add a dedicated function to terminate orchestration.
@@ -691,7 +552,7 @@ namespace XRayConnector
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(
-                    new { status = "Success" }
+                    new { status = "Success", purged= purgeResult.PurgedInstanceCount }
                     );
                 return response;
                 
@@ -777,7 +638,7 @@ namespace XRayConnector
                                     .Replace("@S1_1_1", ToEpochSeconds(start.AddSeconds(1)).ToString().Replace(',', '.'))
                                     .Replace("@E1_1_1", ToEpochSeconds(start.AddSeconds(3)).ToString().Replace(',', '.'))
                                     .Replace("@S1_1", ToEpochSeconds(start.AddSeconds(1)).ToString().Replace(',', '.'))
-                                    .Replace("@E1_1", ToEpochSeconds(start.AddSeconds(2)).ToString().Replace(',','.'))
+                                    .Replace("@E1_1", ToEpochSeconds(start.AddSeconds(2)).ToString().Replace(',', '.'))
                                     .Replace("@S1", ToEpochSeconds(start).ToString().Replace(',', '.'))
                                     .Replace("@E1", ToEpochSeconds(start.AddSeconds(3)).ToString().Replace(',', '.'));
                                                      
@@ -787,7 +648,7 @@ namespace XRayConnector
             
             try
             {
-                var resp = await XRayClient?.PutTraceSegmentsAsync(seg);
+                var resp = await _xrayClient?.PutTraceSegmentsAsync(seg);
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(
