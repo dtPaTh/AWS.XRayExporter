@@ -16,34 +16,31 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using XRayConnector.Metrics;
+using XRay2OTLP;
+using XRayConnector.Telemetry;
 
 namespace XRayConnector
 {
     public class XRayConnector
     {
         private const string PeriodicAPIPollerSingletoninstanceId = "SinglePeriodicAPIPoller";
-        private const string PollingIntervalSeconds = "PollingIntervalSeconds";
-        private const string PollingIntervalMinutes = "PollingIntervalMinutes";
-        private const string AutoStart = "AutoStart";
 
         private readonly ILogger _log;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly JsonPayloadHelper _jsonPayloadHelper;
         private readonly IXRayClient _xrayClient;
-        private readonly IApiMetricsProvider _metricsProvider;
+        private readonly MetricsProvider _metricsProvider;
+        private readonly WorkflowConfig _config;
 
-        private bool AutoStartWorkflow
+        public XRayConnector(
+            WorkflowConfig config,
+            ILogger<XRayConnector> logger, 
+            IHttpClientFactory httpClientFactory, 
+            JsonPayloadHelper jsonPayloadHelper, 
+            IXRayClient xRayClient = null,
+            MetricsProvider metricsProvider = null)
         {
-            get
-            {
-                var autoStartValue = Environment.GetEnvironmentVariable(AutoStart);
-                return bool.TryParse(autoStartValue, out bool result) && result;
-            }
-        }
-
-        public XRayConnector(ILogger<XRayConnector> logger, IHttpClientFactory httpClientFactory, JsonPayloadHelper jsonPayloadHelper, IXRayClient xRayClient = null, IApiMetricsProvider metricsProvider = null)
-        {
+            _config = config;
             _log = logger;
             _httpClientFactory = httpClientFactory;
             _jsonPayloadHelper = jsonPayloadHelper;
@@ -107,7 +104,7 @@ namespace XRayConnector
                 EndTime = req.EndTime,
                 NextToken = req.NextToken
             };
-            _log.LogInformation("GetTraceSummaries@" + req.StartTime + " - " + req.EndTime+", "+ req.NextToken);
+            _log.LogInformation($"GetRecentTraceIds({req.StartTime} - {req.EndTime} : {req.EndTime.Subtract(req.StartTime).TotalSeconds}s {(String.IsNullOrEmpty(req.NextToken)?"initial":"paged")}");
 
             return await GetTraces(reqObj);
         }
@@ -270,7 +267,6 @@ namespace XRayConnector
         {
 
             var getTraces = context.GetInput<TracesRequest>();
-            _log.LogInformation("RetrieveRecentTraces@" + getTraces.StartTime + " - " + getTraces.EndTime+": "+ getTraces.EndTime.Subtract(getTraces.StartTime).TotalSeconds); 
 
             var traces = await context.CallActivityAsync<TracesResult>(nameof(GetRecentTraceIds), getTraces);
 
@@ -313,7 +309,7 @@ namespace XRayConnector
 
                 if (status == null)
                 {
-                    if (AutoStartWorkflow)
+                    if (_config.AutoStart)
                     {
                         await response.WriteAsJsonAsync(
                             new
@@ -323,7 +319,7 @@ namespace XRayConnector
                             }
                         );
 
-                        _log.LogWarning($"PeriodicAPIPoller has not been started. Automatically starting.. ");
+                        _log.LogWarning("PeriodicAPIPoller has not been started. Automatically starting.. ");
                         await durableTaskClient.ScheduleNewOrchestrationInstanceAsync(nameof(PeriodicAPIPoller), null, new StartOrchestrationOptions() { InstanceId = instanceId });
                     }
                     else
@@ -351,7 +347,7 @@ namespace XRayConnector
                     );
 
                     _log.LogWarning("PeriodicAPIPoller has been started prior! Status: '" + status.RuntimeStatus.ToString() + "'");
-                    if (AutoStartWorkflow && (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed || status.RuntimeStatus == OrchestrationRuntimeStatus.Terminated))
+                    if (_config.AutoStart && (status.RuntimeStatus == OrchestrationRuntimeStatus.Failed || status.RuntimeStatus == OrchestrationRuntimeStatus.Terminated))
                     {
                         _log.LogWarning("Restarting PeriodicAPIPoller!");
                         await durableTaskClient.RestartAsync(instanceId);
@@ -433,9 +429,9 @@ namespace XRayConnector
         [Function(nameof(PeriodicAPIPoller))]
         public async Task PeriodicAPIPoller([OrchestrationTrigger] TaskOrchestrationContext context)
         {
-            _metricsProvider?.RecordMemoryUsage();
+            if (!context.IsReplaying)
+                _metricsProvider?.RecordMemoryUsage();
 
-            bool skip = false;
             DateTime currentTime;
             DateTime? scheduledRun = context.GetInput<DateTime?>();
             if (scheduledRun == null)
@@ -444,50 +440,41 @@ namespace XRayConnector
             }
             else
             {
-                uint maximumReplayHistorySeconds;
-                if (!UInt32.TryParse(Environment.GetEnvironmentVariable("MaximumReplayHistorySeconds"), out maximumReplayHistorySeconds))
-                    maximumReplayHistorySeconds = 900; //default 15min
-
-                if (scheduledRun.Value <= context.CurrentUtcDateTime.AddSeconds(-maximumReplayHistorySeconds)) 
+                if (scheduledRun.Value <= context.CurrentUtcDateTime.Subtract(TimeSpan.FromSeconds(_config.MaximumReplayHistorySeconds))) 
                 {
-                    _log.LogWarning($"Scheduled timeframe lags to much behind (> {maximumReplayHistorySeconds}s). Reset to current time. {scheduledRun.Value.ToString("o")} vs {context.CurrentUtcDateTime.ToString("o")}");
+                    _log.LogWarning(context, $"Scheduled timeframe lags to much behind (> {_config.MaximumReplayHistorySeconds}s). Reset to current time. {scheduledRun.Value.ToString("o")} vs {context.CurrentUtcDateTime.ToString("o")}");
                     currentTime = context.CurrentUtcDateTime;
                 }
                 else
                     currentTime = scheduledRun.Value;
             }
 
-            uint pollingIntervalSeconds;
-            if (!UInt32.TryParse(Environment.GetEnvironmentVariable(PollingIntervalSeconds), out pollingIntervalSeconds))
-            {
-                if (UInt32.TryParse(Environment.GetEnvironmentVariable(PollingIntervalMinutes), out uint pollingIntervalMinutes))
-                {
-                    pollingIntervalSeconds = pollingIntervalMinutes * 60;
-                }
-                else
-                {
-                    pollingIntervalSeconds = 180;
-                    _log.LogWarning("Unable to parse PollingIntervalSeconds, using default value (180sec)");
-                }
-            }
-
-            _log.LogInformation("PeriodicAPIPoller @" + pollingIntervalSeconds + "s");
-
             var getTraces = new TracesRequest()
             {
-                StartTime = currentTime.AddSeconds(-1 * pollingIntervalSeconds),
+                StartTime = currentTime.Subtract(TimeSpan.FromSeconds(_config.PollingIntervalSeconds)),
                 EndTime = currentTime
             };
 
             await context.CallSubOrchestratorAsync(nameof(RetrieveRecentTraces), getTraces);
 
-            _metricsProvider?.RecordMemoryUsage();
+            if (!context.IsReplaying)
+            {
+                _metricsProvider?.RecordMemoryUsage();
+            }
 
-            DateTime nextRun = currentTime.AddSeconds(pollingIntervalSeconds);
+            DateTime nextRun = currentTime.AddSeconds(_config.PollingIntervalSeconds);
             if (nextRun <= context.CurrentUtcDateTime)
-                nextRun = context.CurrentUtcDateTime.AddSeconds(pollingIntervalSeconds);
+                nextRun = context.CurrentUtcDateTime.AddSeconds(_config.PollingIntervalSeconds);
 
-            // sleep for x seconds before next poll
+            var delay = nextRun.Subtract(context.CurrentUtcDateTime).TotalMilliseconds;
+            if (!context.IsReplaying)
+            {
+                _metricsProvider?.RecordPollerTimes(PeriodicAPIPollerSingletoninstanceId, "processing", (_config.PollingIntervalSeconds*1000) - (long)delay);
+                _metricsProvider?.RecordPollerTimes(PeriodicAPIPollerSingletoninstanceId, "wait", (long)delay);
+            }
+            
+            _log.LogInformation(context, $"Next run scheduled at {nextRun.ToString("o")} (in {delay}ms)");
+            
             await context.CreateTimer(nextRun, CancellationToken.None);
             context.ContinueAsNew(nextRun);
 
@@ -534,13 +521,15 @@ namespace XRayConnector
             try
             {
                 string content = await req.ReadAsStringAsync();
-                long olderThan;
-                if (!long.TryParse(content, out olderThan))
-                    olderThan = 60;
+
+                DateTimeOffset? createdTo = null;
+
+                if (long.TryParse(content, out var olderThan))
+                    DateTime.UtcNow.AddMinutes(-olderThan);
 
                 var purgeResult = await durableTaskClient.PurgeInstancesAsync(
                     null,
-                    DateTime.UtcNow.AddMinutes(-1 * olderThan),
+                    createdTo,
                     new List<OrchestrationRuntimeStatus>
                     {
                         OrchestrationRuntimeStatus.Completed, 
@@ -548,7 +537,10 @@ namespace XRayConnector
                         OrchestrationRuntimeStatus.Terminated
                     });
 
-                _log.LogInformation($"Purged history >{olderThan} minutes: {purgeResult.PurgedInstanceCount} instances deleted");
+                if (createdTo != null)
+                    _log.LogInformation($"Purged history before {createdTo.Value.UtcDateTime.ToString("o")}: {purgeResult.PurgedInstanceCount} instances deleted");
+                else
+                    _log.LogInformation($"Purged history: {purgeResult.PurgedInstanceCount} instances deleted");
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 await response.WriteAsJsonAsync(

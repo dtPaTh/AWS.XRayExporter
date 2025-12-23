@@ -8,19 +8,37 @@ namespace AmazonSDKWrapper
 { 
     public class XRayClientSimulator : IXRayClient
     {
+        public enum BatchSegmentMode
+        {
+            Never,
+            Always,
+            Random
+        }
+
         private readonly ushort _traceCountPerRequest;
         private readonly byte _pageSize;
-        private readonly bool _batchSegements;
-      
-        public XRayClientSimulator(ushort traceCountPerSummariesRequest = 10, byte pageSize = 2, bool batchSegments = false)
+//private readonly bool _batchSegements;
+        private readonly BatchSegmentMode _batchSegementsMode;
+        private bool _batchSegments;
+
+        public XRayClientSimulator(ushort traceCountPerSummariesRequest = 10, byte pageSize = 2, BatchSegmentMode batchSegmentsMode = BatchSegmentMode.Never)
         {
             _traceCountPerRequest = traceCountPerSummariesRequest;
             _pageSize = pageSize;
-            _batchSegements = batchSegments;
+            _batchSegementsMode = batchSegmentsMode;
+
+            if (_batchSegementsMode == BatchSegmentMode.Never)
+                _batchSegments = false;
+            else if (_batchSegementsMode == BatchSegmentMode.Always)
+                _batchSegments = true;
+
         }
 
         public Task<GetTraceSummariesResponse> GetTraceSummariesAsync(GetTraceSummariesRequest request)
         {
+            if (_batchSegementsMode == BatchSegmentMode.Random)
+                _batchSegments = new Random().NextDouble() < 0.25;
+
             var summaries = new List<TraceSummary>();
             for (int i = 0; i < _pageSize; i++) //only create samples with page size number of summaries, even if more are requested, as we only return the page size number of summaries
             {
@@ -106,7 +124,7 @@ namespace AmazonSDKWrapper
                     new Trace
                     {
                         Id = traceid,
-                        Segments = GetSampleSegments(traceid, _batchSegements, String.IsNullOrEmpty(request.NextToken)?0:1)
+                        Segments = GetSampleSegments(traceid, _batchSegments, String.IsNullOrEmpty(request.NextToken)?0:1)
                     }
                 );
             }
@@ -114,7 +132,7 @@ namespace AmazonSDKWrapper
             var response = new BatchGetTracesResponse
             {
                 Traces = traces,
-                NextToken = _batchSegements && String.IsNullOrEmpty(request.NextToken) ? "1": null
+                NextToken = _batchSegments && String.IsNullOrEmpty(request.NextToken) ? "1": null
             };
 
             return Task.FromResult(response);

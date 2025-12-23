@@ -11,9 +11,12 @@ using OpenTelemetry.Resources;
 using System;
 using System.Net.Http.Headers;
 using XRayConnector;
-using XRayConnector.Metrics;
+using XRayConnector.Telemetry;
+
 
 var builder = FunctionsApplication.CreateBuilder(args);
+
+builder.Services.AddSingleton<WorkflowConfig>();
 
 builder.Services.AddHttpClient("XRayConnector", config =>
 {
@@ -74,10 +77,11 @@ builder.Services.AddSingleton<IAmazonXRay>(sp =>
 var simulatorMode = Environment.GetEnvironmentVariable("SimulatorMode");
 if (string.Equals(simulatorMode, "XRayApi", StringComparison.OrdinalIgnoreCase))
 {
-    ushort traceCount = ushort.TryParse(Environment.GetEnvironmentVariable("SIM_TraceSummariesResponseCount"), out var tc) ? tc : (ushort)10;
-    byte pageSize = byte.TryParse(Environment.GetEnvironmentVariable("SIM_TraceSummariesPageSize"), out var ps) ? ps : (byte)2;
-    bool batchSegments = bool.TryParse(Environment.GetEnvironmentVariable("SIM_BatchTraceSegments"), out var bs) ? bs : false;
-    builder.Services.AddSingleton<IXRayClient>(_ => new XRayClientSimulator(traceCount, pageSize, batchSegments));
+    builder.Services.AddSingleton<IXRayClient>(_ => new XRayClientSimulator(
+        ushort.TryParse(Environment.GetEnvironmentVariable("SIM_TraceSummariesResponseCount"), out var _traceCount) ? _traceCount : (ushort)10,
+        byte.TryParse(Environment.GetEnvironmentVariable("SIM_TraceSummariesPageSize"), out var _pageSize) ? _pageSize : (byte)2,
+        Enum.TryParse<XRayClientSimulator.BatchSegmentMode>(Environment.GetEnvironmentVariable("SIM_BatchTraceSegments"), out var _batchSegmentMode) ? _batchSegmentMode : XRayClientSimulator.BatchSegmentMode.Never
+    ));
 }
 else
 {
@@ -87,13 +91,13 @@ else
 var enableProfiling = Environment.GetEnvironmentVariable("EnableProfiling");
 if (bool.TryParse(enableProfiling, out bool profilingEnabled) && profilingEnabled)
 {
-    builder.Services.AddSingleton<IApiMetricsProvider, OpenTelemetryApiMetricsProvider>();
+    builder.Services.AddSingleton<MetricsProvider>();
     var otlpMetricsEndpoint = Environment.GetEnvironmentVariable("OTLP_METRICS_ENDPOINT") ?? "http://localhost:4317";
     builder.Services.AddOpenTelemetryMetrics(metricsBuilder =>
     {
         metricsBuilder
             .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("AWS.XRayExporter"))
-            .AddMeter(OpenTelemetryApiMetricsProvider.MeterName)
+            .AddMeter(MetricsProvider.MeterName)
             .AddOtlpExporter(options =>
             {
                 // use gRPC protocol to send metrics to OTLP collector

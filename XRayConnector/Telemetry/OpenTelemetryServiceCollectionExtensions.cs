@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 
-namespace XRayConnector.Metrics
+namespace XRayConnector.Telemetry
 {
     /// <summary>
     /// Service collection helpers for OpenTelemetry metrics integration.
