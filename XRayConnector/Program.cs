@@ -13,7 +13,6 @@ using System.Net.Http.Headers;
 using XRayConnector;
 using XRayConnector.Telemetry;
 
-
 var builder = FunctionsApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<WorkflowConfig>();
@@ -27,7 +26,6 @@ builder.Services.AddHttpClient("XRayConnector", config =>
     config.DefaultRequestHeaders.UserAgent.Add(commentValue);
 });
 
-
 builder.Services.AddSingleton<JsonPayloadHelper>(sp =>
 {
     return new JsonPayloadHelper(bool.TryParse(Environment.GetEnvironmentVariable("EnableJsonPayloadCompression"), out bool _result) && _result);
@@ -35,7 +33,6 @@ builder.Services.AddSingleton<JsonPayloadHelper>(sp =>
 
 builder.Services.AddSingleton<AWSCredentials>(sp =>
 {
-
     AWSCredentials creds = null;
     var identityKey = Environment.GetEnvironmentVariable("AWS_IdentityKey");
     var secretKey = Environment.GetEnvironmentVariable("AWS_SecretKey");
@@ -88,21 +85,23 @@ else
     builder.Services.AddSingleton<IXRayClient, XRayClient>();
 }
 
-var enableProfiling = Environment.GetEnvironmentVariable("EnableProfiling");
-if (bool.TryParse(enableProfiling, out bool profilingEnabled) && profilingEnabled)
+var enableMetrics = Environment.GetEnvironmentVariable("EnableMetrics");
+if (bool.TryParse(enableMetrics, out bool metricsEnabled) && metricsEnabled)
 {
     builder.Services.AddSingleton<MetricsProvider>();
-    var otlpMetricsEndpoint = Environment.GetEnvironmentVariable("OTLP_METRICS_ENDPOINT") ?? "http://localhost:4317";
+    var otlpMetricsEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") ?? Environment.GetEnvironmentVariable("OTLP_ENDPOINT");
     builder.Services.AddOpenTelemetryMetrics(metricsBuilder =>
     {
+        OtlpExportProtocol metricsProtocol = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL") == "http/protobuf" ? OtlpExportProtocol.HttpProtobuf : OtlpExportProtocol.Grpc;
+
         metricsBuilder
             .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("AWS.XRayExporter"))
             .AddMeter(MetricsProvider.MeterName)
             .AddOtlpExporter(options =>
             {
-                // use gRPC protocol to send metrics to OTLP collector
                 options.Endpoint = new Uri(otlpMetricsEndpoint);
-                options.Protocol = OtlpExportProtocol.Grpc;
+                options.Headers = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_METRICS_HEADERS");
+                options.Protocol = metricsProtocol;
             });
     });
 }
