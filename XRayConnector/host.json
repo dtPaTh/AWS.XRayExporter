@@ -1,26 +1,26 @@
 {
   "version": "2.0",
   "extensions": {
-    "durableTask": {
-      "maxConcurrentOrchestratorFunctions": 8,
-      "maxConcurrentActivityFunctions": 8,
-      "storageProvider": {
+  "durableTask": {
+    "hubName": "xrayconnector",
+    "maxConcurrentOrchestratorFunctions": 8,
+    "maxConcurrentActivityFunctions": 8,
+    "extendedSessionsEnabled": false,
+    "logReplayEvents": false
+    ,"storageProvider": {
         "type": "mssql",
         "connectionStringName": "SQLDB_Connection",
         "createDatabaseIfNotExists": true
       }
-    }
-  },
+    
+  }
+},
   "logging": {
     "logLevel": {
       "default": "Information",
+      "XRayConnector.XRayConnector": "Information",
       "DurableTask.SqlServer": "Information",
       "DurableTask.Core": "Information"
-    },
-    "applicationInsights": {
-      "samplingSettings": {
-        "isEnabled": false
-      }
     }
   }
 }

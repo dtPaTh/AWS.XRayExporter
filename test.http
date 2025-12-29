@@ -1,5 +1,7 @@
-
-### ### Local testing with kubernetes (e.g. minikube, Docker for Desktop)
+### #######################################################################
+### Local testing with Kubernetes (e.g. minikube, Docker for Desktop)
+### Replace <YOUR-MASTER-KEY> with your actual master key defined in xrayconnector.yml
+### #######################################################################
 #### Test request
 GET http://localhost/api/TestPing?code=<YOUR-MASTER-KEY>
 
@@ -9,7 +11,7 @@ POST http://localhost/api/TriggerPeriodicAPIPoller?code=<YOUR-MASTER-KEY>
 #### Terminate workflow 
 POST http://localhost/api/TerminatePeriodicAPIPoller?code=<YOUR-MASTER-KEY>
 
-### Send test-trace to XRay
+### Send test-trace to XRay 
 POST http://localhost/api/TestGenerateSampleTrace?code=<YOUR-MASTER-KEY>
 
 ### Send test-trace to configured backend
@@ -18,21 +20,27 @@ POST http://localhost/api/TestSendSampleTrace?code=<YOUR-MASTER-KEY>
 ### Check status of workflow
 POST http://localhost/api/WorkflowWatchdog?code=<YOUR-MASTER-KEY>
 
-### Purge history older than X minutes (default is 1 day)
+### Purge (completed, failed or terminated) history older than X minutes (Default is all history)
 POST http://localhost/api/PurgeHistory?code=<YOUR-MASTER-KEY>
 content-type: text/plain
 
-360
+60
 
-### ### Local testing (Azure Function)
-#### Test request
-GET http://localhost:7217/api/TestPing 
+### Purge history
+POST http://localhost:7217/api/PurgeHistory?code=<YOUR-MASTER-KEY>
 
+
+### ################################################
+### Local testing using Azure Function core tools
+### ################################################
 ### Start workflow
 POST http://localhost:7217/api/TriggerPeriodicAPIPoller 
 
 ### Terminate workflow
 POST http://localhost:7217/api/TerminatePeriodicAPIPoller 
+
+#### Test request
+GET http://localhost:7217/api/TestPing 
 
 ### Send test-trace to XRay
 POST http://localhost:7217/api/TestGenerateSampleTrace
@@ -43,8 +51,11 @@ POST http://localhost:7217/api/TestSendSampleTrace
 ### Check status of workflow
 POST http://localhost:7217/api/WorkflowWatchdog
 
-### Purge history older than X minutes (default is 1 day)
+### Purge (completed, failed or terminated) history older than X minutes (Default is all history)
 POST http://localhost:7217/api/PurgeHistory
 content-type: text/plain
 
-360
+1
+
+### Purge history
+POST http://localhost:7217/api/PurgeHistory

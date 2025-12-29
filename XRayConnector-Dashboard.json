@@ -1,0 +1,423 @@
+{
+    "version": 20,
+    "variables": [],
+    "tiles": {
+        "0": {
+            "title": "Worker memory consumption",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries { avg(process_memory_usage.total), value.A = avg(process_memory_usage.total, scalar: true), avg(process_memory_usage.gc_heap), value.B = avg(process_memory_usage.gc_heap, scalar: true) }, union: TRUE",
+            "visualization": "lineChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom"
+                    },
+                    "pointsDisplay": "never"
+                },
+                "autoSelectVisualization": false,
+                "unitsOverrides": [
+                    {
+                        "identifier": "avg(process_memory_usage.total)",
+                        "unitCategory": "data",
+                        "baseUnit": "byte",
+                        "displayUnit": null,
+                        "decimals": null,
+                        "suffix": "",
+                        "delimiter": false,
+                        "added": 1766746516455
+                    },
+                    {
+                        "identifier": "avg(process_memory_usage.gc_heap)",
+                        "unitCategory": "data",
+                        "baseUnit": "byte",
+                        "displayUnit": null,
+                        "decimals": null,
+                        "suffix": "",
+                        "delimiter": false,
+                        "added": 1766752051072
+                    }
+                ]
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "process_memory_usage.total",
+                            "aggregation": "avg"
+                        },
+                        "convertToValue": "Avg"
+                    },
+                    {
+                        "id": "B",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "process_memory_usage.gc_heap",
+                            "aggregation": "avg"
+                        },
+                        "convertToValue": "Avg"
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        },
+        "1": {
+            "title": "XRay API requests (by operation)",
+            "description": "Number of requests to AWS X-Ray API split by operations. ",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries { sum(api_calls), value.A = avg(api_calls, scalar: true) }, by: { operation }",
+            "visualization": "lineChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom"
+                    }
+                },
+                "autoSelectVisualization": true
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "api_calls",
+                            "aggregation": "sum"
+                        },
+                        "by": [
+                            "operation"
+                        ],
+                        "convertToValue": "Avg"
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        },
+        "2": {
+            "title": "XRay API usage",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries { sum(api_calls), value.A = avg(api_calls, scalar: true) }, by: { operation }",
+            "visualization": "barChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom"
+                    },
+                    "valueRepresentation": "relative"
+                },
+                "autoSelectVisualization": false
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "api_calls",
+                            "aggregation": "sum"
+                        },
+                        "by": [
+                            "operation"
+                        ],
+                        "convertToValue": "Avg"
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        },
+        "3": {
+            "title": "Workflow execution time breakdown",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries { avg(workflow.polling_interval), value.A = count(workflow.polling_interval, scalar: true) }, by: { label }",
+            "visualization": "barChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom"
+                    }
+                },
+                "autoSelectVisualization": false
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "workflow.polling_interval",
+                            "aggregation": "avg"
+                        },
+                        "by": [
+                            "label"
+                        ],
+                        "convertToValue": "Count"
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        },
+        "4": {
+            "title": "XRay API requests (total)",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries { sum(api_calls), value.A = avg(api_calls, scalar: true) }",
+            "visualization": "lineChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom",
+                        "hidden": true
+                    }
+                },
+                "autoSelectVisualization": true
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "api_calls",
+                            "aggregation": "sum"
+                        },
+                        "by": [],
+                        "convertToValue": "Avg"
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        },
+        "5": {
+            "title": "Worker instances",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries count(process_memory_usage.total), by: { service.instance.id }",
+            "visualization": "barChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom",
+                        "hidden": true
+                    },
+                    "leftYAxisSettings": {
+                        "min": {
+                            "mode": "data-min"
+                        }
+                    }
+                },
+                "autoSelectVisualization": false,
+                "unitsOverrides": [
+                    {
+                        "identifier": "count(process_memory_usage.total)",
+                        "unitCategory": "unspecified",
+                        "baseUnit": "count",
+                        "displayUnit": null,
+                        "decimals": null,
+                        "suffix": "",
+                        "delimiter": false,
+                        "added": 1766752697780
+                    }
+                ]
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "process_memory_usage.total",
+                            "aggregation": "count"
+                        },
+                        "by": [
+                            "service.instance.id"
+                        ]
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        },
+        "6": {
+            "title": "XRay Traces processed",
+            "type": "data",
+            "subType": "dql-builder-metrics",
+            "query": "timeseries { sum(api_response_objects), value.A = avg(api_response_objects, scalar: true) }, by: { api }",
+            "visualization": "lineChart",
+            "visualizationSettings": {
+                "chartSettings": {
+                    "legend": {
+                        "position": "bottom",
+                        "hidden": true
+                    }
+                },
+                "autoSelectVisualization": true
+            },
+            "querySettings": {
+                "maxResultRecords": 1000,
+                "defaultScanLimitGbytes": 500,
+                "maxResultMegaBytes": 1,
+                "defaultSamplingRatio": 10,
+                "enableSampling": false
+            },
+            "queryConfig": {
+                "version": "19.1.0",
+                "subQueries": [
+                    {
+                        "id": "A",
+                        "isEnabled": true,
+                        "datatype": "metrics",
+                        "metric": {
+                            "key": "api_response_objects",
+                            "aggregation": "sum"
+                        },
+                        "by": [
+                            "api"
+                        ],
+                        "convertToValue": "Avg"
+                    }
+                ]
+            },
+            "davis": {
+                "enabled": false,
+                "davisVisualization": {
+                    "isAvailable": true
+                }
+            }
+        }
+    },
+    "layouts": {
+        "0": {
+            "x": 0,
+            "y": 5,
+            "w": 9,
+            "h": 5
+        },
+        "1": {
+            "x": 9,
+            "y": 7,
+            "w": 8,
+            "h": 4
+        },
+        "2": {
+            "x": 9,
+            "y": 11,
+            "w": 8,
+            "h": 4
+        },
+        "3": {
+            "x": 9,
+            "y": 3,
+            "w": 8,
+            "h": 4
+        },
+        "4": {
+            "x": 0,
+            "y": 0,
+            "w": 9,
+            "h": 5
+        },
+        "5": {
+            "x": 0,
+            "y": 10,
+            "w": 9,
+            "h": 5
+        },
+        "6": {
+            "x": 9,
+            "y": 0,
+            "w": 8,
+            "h": 3
+        }
+    },
+    "importedWithCode": false,
+    "settings": {}
+}

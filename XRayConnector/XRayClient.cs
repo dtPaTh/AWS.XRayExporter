@@ -6,9 +6,9 @@ namespace AmazonSDKWrapper
 { 
     public class XRayClient : IXRayClient
     {
-        private readonly AmazonXRayClient _xrayClient;
+        private readonly IAmazonXRay _xrayClient;
 
-        public XRayClient(AmazonXRayClient xrayClient)
+        public XRayClient(IAmazonXRay xrayClient)
         {
             _xrayClient = xrayClient;
         }

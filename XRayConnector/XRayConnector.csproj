@@ -1,25 +1,24 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
 	<DockerFastModeProjectMountDirectory>/home/site/wwwroot</DockerFastModeProjectMountDirectory>
 	<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="..\.dockerignore" Link=".dockerignore">
-      <DependentUpon>$(DockerDefaultDockerfile)</DependentUpon>
-    </None>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="AWSSDK.XRay" Version="4.0.3.8" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.DurableTask" Version="1.10.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.DurableTask.SqlServer" Version="1.5.2" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.3.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.51.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.7" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="AWSSDK.SecurityToken" Version="3.7.400.40" />
-    <PackageReference Include="AWSSDK.XRay" Version="3.7.200.5" />
-    <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.13.7" />
-    <PackageReference Include="Microsoft.DurableTask.SqlServer.AzureFunctions" Version="1.4.0" />
-    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="6.36.0" />
-	<PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.5.0" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
-    <PackageReference Include="System.Drawing.Common" Version="4.7.2" />
+    <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\XRay2OLTP\XRay2OLTP.csproj" />

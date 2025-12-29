@@ -1,3 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mssql
+  namespace: mssql
+  labels:
+    app: mssql
+spec:
+  ports:
+    - port: 1433        # Port exposed by the Service
+      targetPort: 1433  # Port on the MSSQL container
+      protocol: TCP
+  selector:
+    app: mssql          # Matches the StatefulSet pods
+  type: ClusterIP       # Default type for internal cluster communication
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

@@ -1,5 +1,5 @@
 # This stage is used to build the service project
-FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["XRayConnector/XRayConnector.csproj", "XRayConnector/"]
@@ -14,7 +14,7 @@ ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./XRayConnector.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false 
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
-FROM mcr.microsoft.com/azure-functions/dotnet:4 AS base
+FROM mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated10.0 AS base
 WORKDIR /home/site/wwwroot
 COPY --from=publish /app/publish .
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
