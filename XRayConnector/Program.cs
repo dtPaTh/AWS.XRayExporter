@@ -19,7 +19,7 @@ builder.Services.AddSingleton<WorkflowConfig>();
 
 builder.Services.AddHttpClient("XRayConnector", config =>
 {
-    var productValue = new ProductInfoHeaderValue("XRayConnector", "1.6");
+    var productValue = new ProductInfoHeaderValue("XRayConnector", "2.0");
     var commentValue = new ProductInfoHeaderValue("(+https://github.com/dtPaTh/AWS.XRayExporter)");
 
     config.DefaultRequestHeaders.UserAgent.Add(productValue);
