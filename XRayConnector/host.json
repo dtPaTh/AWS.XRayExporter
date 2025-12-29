@@ -5,23 +5,22 @@
     "hubName": "xrayconnector",
     "maxConcurrentOrchestratorFunctions": 8,
     "maxConcurrentActivityFunctions": 8,
-    "storageProvider": {
+    "extendedSessionsEnabled": false,
+    "logReplayEvents": false
+    ,"storageProvider": {
         "type": "mssql",
         "connectionStringName": "SQLDB_Connection",
         "createDatabaseIfNotExists": true
       }
+    
   }
 },
   "logging": {
     "logLevel": {
       "default": "Information",
+      "XRayConnector.XRayConnector": "Information",
       "DurableTask.SqlServer": "Information",
       "DurableTask.Core": "Information"
-    },
-    "applicationInsights": {
-      "samplingSettings": {
-        "isEnabled": false
-      }
     }
   }
 }

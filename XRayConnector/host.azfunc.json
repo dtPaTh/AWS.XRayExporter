@@ -6,11 +6,7 @@
       "default": "Information",
       "DurableTask.SqlServer": "Information",
       "DurableTask.Core": "Information"
-    },
-    "applicationInsights": {
-      "samplingSettings": {
-        "isEnabled": false
-      }
     }
+    
   }
 }

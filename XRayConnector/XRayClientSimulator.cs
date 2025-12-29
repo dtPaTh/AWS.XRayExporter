@@ -17,7 +17,7 @@ namespace AmazonSDKWrapper
 
         private readonly ushort _traceCountPerRequest;
         private readonly byte _pageSize;
-//private readonly bool _batchSegements;
+
         private readonly BatchSegmentMode _batchSegementsMode;
         private bool _batchSegments;
 
