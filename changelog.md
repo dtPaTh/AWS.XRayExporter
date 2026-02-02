@@ -1,4 +1,9 @@
 # Changelog
+## 2.1.0
+### Changes
+- Deploy workload and datase into same namespace.
+- Add a service-definition for database to simplify db connection
+- Provide a bash script for setting up database instead of powershell
 
 ## 2.0.0
 ### Added
