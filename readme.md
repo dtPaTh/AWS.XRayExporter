@@ -141,8 +141,8 @@ Replace the placeholders in connector-config.yml with proper values providing AW
 **Step 7)** Deploy config and XRayConnector
 ```
 NAMESPACE="xrayconnector"
-kubectl apply -f .\connector-config.yml -n "$NAMESPACE"
-kubectl apply -f .\xrayconnector.yml -n "$NAMESPACE"
+kubectl apply -f xrayconnector-config.yml -n "$NAMESPACE"
+kubectl apply -f xrayconnector.yml -n "$NAMESPACE"
 ```
 Checking deployment status...
 ```

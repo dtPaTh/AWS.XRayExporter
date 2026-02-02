@@ -2,7 +2,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mssql
-  namespace: mssql
   labels:
     app: mssql
 spec:
@@ -61,16 +60,3 @@ spec:
       resources:
        requests:
         storage: 8Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mssql
-spec:
-  selector:
-    app: mssql         
-  ports:
-  - protocol: TCP
-    port: 1433
-    targetPort: 1433
-  type: ClusterIP
