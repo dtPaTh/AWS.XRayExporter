@@ -6,13 +6,13 @@ type: Opaque
 stringData:
   # # # REPLACE placeholders!!! # # #  
   
- # - - - Database provider - - - 
+  # - - - Database provider - - - 
   # Connection string, replace the <YOUR-DATABASE-PASSWORD> with your actual password as configured in mssql-statefulset-secrets.yml
-  SQLDB_Connection: "Server=mssqlinst.mssql.svc.cluster.local;Database=DurableDB;User ID=sa;Password=<YOUR-DATABASE-PASSWORD>;Persist Security Info=False;TrustServerCertificate=True;Encrypt=True;"
+  SQLDB_Connection: "Server=mssql;Database=DurableDB;User ID=sa;Password=<YOUR-DATABASE-PASSWORD>;Persist Security Info=False;TrustServerCertificate=True;Encrypt=True;"
 
   # - - - AWS IAM identifiers to access X-Ray API - - - 
   # Role based access, for using temporal credentials (recommended, optional)
-  AWS_RoleArn: "<YOUR-ROLE-ARN>",
+  AWS_RoleArn: "<YOUR-ROLE-ARN>"
   # https://docs.aws.amazon.com/general/latest/gr/xray.html#xray_region
   # us-east-1, ap-southeast-2, etc.
   AWS_RegionEndpoint: "<YOUR-AWS-REGION>"
@@ -36,9 +36,9 @@ stringData:
   # Optional: OTLP header authorization (only used for traces). For Dynatrace provide an API Token with OTLP Trace Ingest permissions in the following format "Api-Token <YOUR-DYNATRACE-API-TOKEN>"
   OTLP_HEADER_AUTHORIZATION: "<YOUR-OPTIONAL-OTLP-HEADER-AUTHORIZATION>"
 
-  # - - - Workflow telemetry - - -
+  # - - - Workflow telemetry configuration - - -
   # Enable workflow metrics sent via OTLP. Default is "False".
-  EnableMetrics: "True" 
+  # EnableMetrics: "True" 
   # Metrics exporter configuration. See also: https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/
   # Metrics OTLP protocol. Possible values: "grpc", "http/protobuf". Default is "grpc". 
   # OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "<PROTOCOL>" 
@@ -47,7 +47,7 @@ stringData:
   # OTLP metrics headers for e.g. authorization
   # OTEL_EXPORTER_OTLP_METRICS_HEADERS: "<YOUR-OPTIONAL-OTLP-HEADERS>" 
 
-  # - - - TESTING ONLY - - -
+  # - - - LOAD TESTING configuration - - -
   # Uses a mocked XRay API Client that simulates API responses
   # SimulatorMode: "XRayApi" 
   # Number of total traces returned for a TraceSummaries call

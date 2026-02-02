@@ -87,83 +87,48 @@ docker tag xrayconnector:latest <YOUR-REPOSITORY>/xrayconnector:latest
 docker push <YOUR-REPOSITORY>/xrayconnector:latest
 ```
 
-**Step 3)** Configure database mssql-statefulset-secrets.yml
+**Step 3)** Configure database 
 
-Replace PLACEHOLDER with your password of choice to access the database.
+Replace PLACEHOLDER in mssql-statefulset-secrets.yml to set the MSSql sa password ([MSSql password policy](https://learn.microsoft.com/en-us/sql/relational-databases/security/password-policy)) to setup database admin.
 
 **Step 4)** Deploy mssql server and create the database
 ```
-kubectl create namespace xrayconnector-mssql
-kubectl apply -f ./mssql-statefulset-secrets.yml -n xrayconnector-mssql
-kubectl apply -f ./mssql-statefulset.yml -n xrayconnector-mssql
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Once pod is ready...
-# ..get the name of the pod running SQL Server
-$mssqlPod = kubectl get pods -n xrayconnector-mssql -o jsonpath='{.items[0].metadata.name}'
+NAMESPACE="xrayconnector"
 
-# Use sqlcmd.exe to create a database named "DurableDB". 
-# Replace 'PLACEHOLDER' with the password you used earlier
-$mssqlPwd = "PLACEHOLDER"
-kubectl exec -n xrayconnector-mssql $mssqlPod -- /opt/mssql-tools18/bin/sqlcmd -C -S . -U sa -P $mssqlPwd -Q "CREATE DATABASE [DurableDB] COLLATE Latin1_General_100_BIN2_UTF8"
+# 1) Create namespace (ignore error if it already exists)
+kubectl create namespace "$NAMESPACE" || true
+
+# 2) Apply secret and statefulset
+kubectl apply -f mssql-statefulset-secrets.yml -n "$NAMESPACE"
+kubectl apply -f mssql-statefulset.yml -n "$NAMESPACE"
+
+# 3) Wait for the pod to be ready.
+echo "Waiting for MSSQL pod to become Ready..."
+kubectl wait --for=condition=ready pod -l app=mssql -n "$NAMESPACE" --timeout=300s
+
+# 4) Get the pod name (by label). Falls back to the first pod if label isn't present.
+mssqlPod=$(kubectl get pods -n "$NAMESPACE" -l app=mssql -o jsonpath="{.items[0].metadata.name}")
+
+echo "Using pod: $mssqlPod"
+
+# 5) Read SA password securely
+read -s -p "Enter SA password: " mssqlPwd
+echo
+
+# 6) Create the DurableDB database using sqlcmd inside the pod
+kubectl exec -n "$NAMESPACE" "$mssqlPod" -- /opt/mssql-tools18/bin/sqlcmd -C -S . -U sa -P "$mssqlPwd" \
+  -Q 'CREATE DATABASE [DurableDB] COLLATE Latin1_General_100_BIN2_UTF8'
+
+echo "CREATE DATABASE command sent."
 ```
 
-**Step 5)** Configure the polling & forwarding of X-Ray data in connector-config.yml
+**Step 5)** Configure the polling & forwarding of X-Ray data 
 
-Replace the placeholders with proper values providing AWS secrets, OTLP endpoints, ..
-```
-...
-  # - - - Database provider - - - 
-  # Connection string, replace the <YOUR-DATABASE-PASSWORD> with your actual password as configured in mssql-statefulset-secrets.yml
-  SQLDB_Connection: "Server=mssqlinst.mssql.svc.cluster.local;Database=DurableDB;User ID=sa;Password=<YOUR-DATABASE-PASSWORD>;Persist Security Info=False;TrustServerCertificate=True;Encrypt=True;"
+Replace the placeholders in connector-config.yml with proper values providing AWS secrets, OTLP endpoints, ..
 
-  # - - - AWS IAM identifiers to access X-Ray API - - - 
-  # Role based access, for using temporal credentials (recommended, optional)
-  AWS_RoleArn: "<YOUR-ROLE-ARN>",
-  # https://docs.aws.amazon.com/general/latest/gr/xray.html#xray_region
-  # us-east-1, ap-southeast-2, etc.
-  AWS_RegionEndpoint: "<YOUR-AWS-REGION>"
-  # Basis IAM credentials
-  AWS_IdentityKey: "<YOUR-AWS-IDENTITY-KEY>"
-  AWS_SecretKey: "<YOUR-AWS-SECRET-KEY>"
-  
-  # - - - Workflow configuration - - - 
-  # Polling interval/windows for retrieving trace telemetry from X-Ray API. Default is 180 (3 min)
-  PollingIntervalSeconds: "300"  
-  # When polling is restarted, the maximum timespan to catch up, before the timeframe gets reset. A too large window can cause a polling jam. Default is 900 (15 min).
-  DefaultMaximumReplayHistorySeconds: "900"
-  # If set to True the workflow is automatically started (or re-started in case it was terminated or failed) when the api/WorkflowWatchdog is called. Default is "False".
-  AutoStart: "True"
-  # Enables JsonPayloadCompression If set to True (Recommended) the internal processing of tracedetails is compressed. Improves workflow performance and reduces I/O load on the database, but slightly increases CPU usage. Default is "False". 
-  EnableJsonPayloadCompression: "True"
-  
-  # - - - Target OTLP configuration - - -
-  # Target OTLP endpoint for sending telemetry. For Dynatrace this may look like this: "https://<YOUR-TENANT-ID>.live.dynatrace.com/api/v2/otlp/" 
-  OTLP_ENDPOINT: "<YOUR-OTLP-TARGET-ENDPOINT>"
-  # Optional: OTLP header authorization (only used for traces). For Dynatrace provide an API Token with OTLP Trace Ingest permissions in the following format "Api-Token <YOUR-DYNATRACE-API-TOKEN>"
-  OTLP_HEADER_AUTHORIZATION: "<YOUR-OPTIONAL-OTLP-HEADER-AUTHORIZATION>"
-  
-  # - - - Workflow telemetry - - -
-  # Enable workflow metrics sent via OTLP. Default is "False".
-  EnableMetrics: "True" 
-  # Metrics exporter configuration. See also: https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/
-  # Metrics OTLP protocol. Possible values: "grpc", "http/protobuf". Default is "grpc". 
-  # OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "<PROTOCOL>" 
-  # OTLP endpoint for sending metrics. If not set, OTLP_ENDPOINT will be used.
-  # OTEL_EXPORTER_OTLP_METRICS_ENDPOINT :"<YOUR-OTLP-TARGET-ENDPOINT>" 
-  # OTLP metrics headers for e.g. authorization
-  # OTEL_EXPORTER_OTLP_METRICS_HEADERS: "<YOUR-OPTIONAL-OTLP-HEADERS>" 
-
-  # - - - TESTING ONLY - - -
-  # Uses a mocked XRay API Client that simulates API responses
-  # SimulatorMode: "XRayApi" 
-  # Number of total traces returned for a TraceSummaries call
-  # SIM_TraceSummariesResponseCount: "100"
-  # Maxiumum number of trace per TraceSummaries request returned (to force paging)
-  # SIM_TraceSummariesPageSize: "25"
-  # Each simulated trace contains 5 segments. Configure if segments should be returned in a single batch ("None"), constantly batch ("Always") or randomly (~25%) batch. If batching is enabled, 2 batches are returned. 
-  # SIM_BatchTraceSegments: "Random" 
-  
-```
 
 **Step 6)** Configure the function keys and registry in xrayconnector.yml
 
@@ -175,14 +140,14 @@ Replace the placeholders with proper values providing AWS secrets, OTLP endpoint
 
 **Step 7)** Deploy config and XRayConnector
 ```
-kubectl create namespace xrayconnector
-kubectl apply -f .\connector-config.yml -n xrayconnector
-kubectl apply -f .\xrayconnector.yml -n xrayconnector
+NAMESPACE="xrayconnector"
+kubectl apply -f .\connector-config.yml -n "$NAMESPACE"
+kubectl apply -f .\xrayconnector.yml -n "$NAMESPACE"
 ```
-Checking  deployment status...
+Checking deployment status...
 ```
-kubectl get pods -n xrayconnector
-kubectl rollout status deployment xrayconnector -n xrayconnector
+kubectl get pods -n "$NAMESPACE"
+kubectl rollout status deployment xrayconnector -n "$NAMESPACE"
 ```
 
 ### REST API
