@@ -8,7 +8,7 @@ stringData:
   
   # - - - Database provider - - - 
   # Connection string, replace the <YOUR-DATABASE-PASSWORD> with your actual password as configured in mssql-statefulset-secrets.yml
-  SQLDB_Connection: "Server=mssql;Database=DurableDB;User ID=sa;Password=<YOUR-DATABASE-PASSWORD>;Persist Security Info=False;TrustServerCertificate=True;Encrypt=True;"
+  SQLDB_Connection: "Server=mssql.xrayconnector.svc.cluster.local;Database=DurableDB;User ID=sa;Password=<YOUR-DATABASE-PASSWORD>;Persist Security Info=False;TrustServerCertificate=True;Encrypt=True;"
 
   # - - - AWS IAM identifiers to access X-Ray API - - - 
   # Role based access, for using temporal credentials (recommended, optional)
